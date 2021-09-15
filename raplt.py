@@ -1,6 +1,7 @@
 #Python Class for plotting averaged spectra 
 #plot the raw data from the observation
 #HISTORY
+#21SEP15 GIL finish T and R commands
 #21MAR04 GIL make T command python more modular
 #21MAR04 GIL initial version based on t.py
 #
@@ -17,7 +18,9 @@ import radioastronomy
 try:
     import interpolate
 except:
-    ! pip install interpolate
+    print("Can not import interpolate") 
+    print("interpolate.py needed")
+    print("copy to current directory")
     import interpolate
 
 try:
@@ -40,81 +43,80 @@ except:
     # baryCenter calcuation is optional so continue without it
     baryCenterAvailable = False
 
-
 class raplt: 
     """
     Radio Astronomy Spectra and Event Plotting Class
     """
     def __init__(self, aveTimeSec = 3600., names = []):
-    """
-    Initialize variables for the raplt() command
-    """
+        """
+        Initialize variables for the raplt() command
+        """
 
-    # define a small number
-    EPSILON = 1.E-10
+        # define a small number
+        self.EPSILON = 1.E-10
 
-    self.maxPlot = int(25)
-    self.aveTimeSec = aveTimeSec
+        self.maxPlot = int(25)
+        self.aveTimeSec = aveTimeSec
 # add to your list of known RFI lines, in MHz,
-    self.linelist = [1400.00, 1420.0]  # RFI lines in MHz
-    self.linewidth = [5, 5] # line width in channels
-    self.fileTag = ""
+        self.linelist = [1400.00, 1420.0]  # RFI lines in MHz
+        self.linewidth = [5, 5] # line width in channels
+        self.fileTag = ""
 # min and maximum default velocities
-    self.maxvel = 220.
-    self.minvel = -maxvel
+        self.maxvel = 220.
+        self.minvel = -maxvel
 # min and max velocities for intensity integration
-    self.maxSVel = 150.  # summation velocity range, for integration
-    self.minSVel = -maxSVel
+        self.maxSVel = 150.  # summation velocity range, for integration
+        self.minSVel = -maxSVel
 # cpu Index for normalizing gain values
-    self.cpuIndex = 0
+        self.cpuIndex = 0
 # Keep/plot baseline Subtracted spectra
-    self.doBaseline = False
+        self.doBaseline = False
 # some SDRs put spike in center of spectrum; indicate spike flagging here
-    self.flagCenter = False
+        self.flagCenter = False
 # put list of RFI features here, for interpolation later
-    self.flagRfi = False
+        self.flagRfi = False
 # write log of integrated intensities
-    self.writeTsys = False
+        self.writeTsys = False
 # write calibrated intensities, Kelvin
-    self.writeKelvin = False
+        self.writeKelvin = False
 # to address an old problem, optionally allow folding spectra
-    self.doFold = False
+        self.doFold = False
 # if plotting to a file, specify the directory
-    self.doPlotFile = False
-    self.plotFileDir = "~/"
+        self.doPlotFile = False
+        self.plotFileDir = "~/"
 # if keeping average hot and cold load
-    self.doKeep = False
+        self.doKeep = False
 # specify lowest elevation for cold load averge
-    self.lowel = 10.
+        self.lowel = 10.
 # define fitOrder for intensity measurement
-    self.fitOrder = int(1)
+        self.fitOrder = int(1)
 
 # optionally turn on debug plotting
-    self.doDebug = False
-    self.myTitle = ""      # Default no input title
-    self.saveFile = ""     # Default no saveFileName
-    self.hotFileName = ""
-    self.coldFileName = ""
-    self.plotFrequency = False
-    self.doScaleAve = False
-    self.doZero = False
+        self.doDebug = False
+        self.myTitle = ""      # Default no input title
+        self.saveFile = ""     # Default no saveFileName
+        self.hotFileName = ""
+        self.coldFileName = ""
+        self.plotFrequency = False
+        self.doScaleAve = False
+        self.doZero = False
 # define reference frequency for velocities (MHz)
-    nuh1  = 1420.40575 # neutral hydrogen frequency (MHz)
-    nuoh1 = 1612.231   # OH line
-    nuoh2 = 1665.402   # OH line
-    nuoh3 = 1667.359   # OH Line
-    nuoh4 = 1720.530   # OH Line
+        self.nuh1  = 1420.40575 # neutral hydrogen frequency (MHz)
+        self.nuoh1 = 1612.231   # OH line
+        self.nuoh2 = 1665.402   # OH line
+        self.nuoh3 = 1667.359   # OH Line
+        self.nuoh4 = 1720.530   # OH Line
     # select the self.reference frequency for velocity calculation
-    self.nuRefFreq = nuh1
+        self.nuRefFreq = self.nuh1
 # define hot and cold load temperatures
-    self.thot = 285.0  # define hot and cold load temperatures
+        self.thot = 285.0  # define hot and cold load temperatures
 #thot = 272.0  # 30 Farenheit = 272 K
-    self.tcold = 10.0
-    self.newObs = False
-    self.allFiles = False
+        self.tcold = 10.0
+        self.newObs = False
+        self.allFiles = False
 
 # end of t_init()
-    return
+        return
 # 
 #myargs = sys.argv
 
@@ -310,7 +312,7 @@ class raplt:
                 else:
                     onames = onames.append(onlyfiles)
                     count = count + len(onlyfiles)
-            elif: os.path.isfile( names[iii]):
+            elif os.path.isfile( names[iii]):
                 if count == 0:
                     onames = [ names[iii] ]
                     count = 1
@@ -322,49 +324,50 @@ class raplt:
         self.names = sorted(onames)
 
 # end of t_parse()
-    return self.aveTimeSec, self.names
+        return self.aveTimeSec, self.names
+
+
+    def tsys(self, names):
+        """ 
+        plot tsys spectra for the list of names provided
+        """
+        # to create plots in cronjobs, must use a different backend
+        if self.doPlotFile:
+            mpl.use('Agg')
+        import matplotlib.pyplot as plt
     
-# to create plots in cronjobs, must use a different backend
-if self.doPlotFile:
-    mpl.use('Agg')
-import matplotlib.pyplot as plt
-#first argument is the averaging time in seconds
-    
-linestyles = ['-','-','-', '-.','-.','-.','--','--','--','-','-','-', '-.','-.','-.','--','--','--','-','-','-', '-.','-.','-.','--','--','--','-','-','-', '-.','-.','-.','--','--','--']
-colors =  ['-b','-r','-g', '-b','-r','-g','-b','-r','-g','-c','-m','-y','-c','-m','-y','-c','-m','-y','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g']
-nmax = len(colors)
-xallmax = -9.e9
-xallmin = 9.e9
-ymin = 9.e9
-ymax = -9.e9
-yallmax = ymax
-yallmin = ymin
-# velocities for fitting baselines
+        linestyles = ['-','-','-', '-.','-.','-.','--','--','--','-','-','-', '-.','-.','-.','--','--','--','-','-','-', '-.','-.','-.','--','--','--','-','-','-', '-.','-.','-.','--','--','--']
+    colors =  ['-b','-r','-g', '-b','-r','-g','-b','-r','-g','-c','-m','-y','-c','-m','-y','-c','-m','-y','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g']
+        nmax = len(colors)
+        # set extreams of data ranges to find true min and max
+        xallmax = -9.e9
+        xallmin = 9.e9
+        ymin = 9.e9
+        ymax = -9.e9
+    #all max,min are min and max of all read spectra
+        yallmax = ymax
+        yallmin = ymin
+    # velocities for fitting baselines
 
-c = 299792.458  # (Speed of light  km/sec)
-tmin = 10.0 
-tmax = 999.0 # define reasoanable value limits
-
-# prepare to remove a linear baseline
-
-nplot = 0
-nhot = 0         # number of obs with el < 0
-minGlat = +90.
-maxGlat = -90.
-lastfreq = 0.
-lastbw = 0.
-lastgain = 0.
-lastel = 0.
-lastaz = 0.
-firstdate = ""
-lastdate = ""
-minel = 200.
-maxel = -200.
-firstaz = -1
-otheraz = -1
+        nplot = 0
+        nhot = 0         # number of obs with el < 0
+        minGlat = +90.
+        maxGlat = -90.
+        lastfreq = 0.
+        lastbw = 0.
+        lastgain = 0.
+        lastel = 0.
+        lastaz = 0.
+        firstdate = ""
+        lastdate = ""
+        minel = 200.
+    maxel = -200.
+    firstaz = -1
+    otheraz = -1
 
 # create the spectrum class/structure to receive spectra
-rs = radioastronomy.Spectrum()
+    rs = radioastronomy.Spectrum()
+    return
 
 def average_spec( ave_spec, in_spec, nave, firstutc, lastutc):
     """

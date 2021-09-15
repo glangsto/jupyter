@@ -1,8 +1,11 @@
 #Python class to plot raw NSF spectra.
 #HISTORY
+#21Sep15 GIL updates for python 3 and add arguements for tsys plotting
 #21Jun07 GIL rr -> ras, complete class
 #21Jun06 GIL initial version 
 #
+import os
+import glob
 import matplotlib as mpl
 import numpy as np
 import radioastronomy
@@ -11,7 +14,7 @@ import gainfactor as gf
 
 class Plot(object):
     """
-    Define the different types of plots
+    Define the different types of plots for Radio Astronomy Service (RAS) Horns
     """
 
 #   some SDRs put spike in center of spectrum; indicate spike flagging here
@@ -105,7 +108,8 @@ class Plot(object):
         self.gainAve = 1.
         self.minGLat = 0.
         self.maxGLat = 0.
-
+        self.tint = 30.
+        
         # end of init
         return
 
@@ -122,9 +126,11 @@ class Plot(object):
             print("Where <flags> are:")
             print("-A optionally scale intensities by count of spectra averaged")
             print("-B <sample> Set first sample to plot (default is 1/4 of samples)")
+            print("-BASE  Fit and remove a spectral baseline")
             print("-C optionally flag the center of the band")
             print("-E <sample> Set last sample to plot (default is end of samples)")
             print("-H optionally set the high velocity region for baseline fit")
+            print("-I <integration time> Time (seconds) to average observations before plotting")
             print("-K optionall save average hot and cold load calibration observations")
             print("-L optionally set the low velocity region for baseline fit")
             print("-N <number> optionally set the number of spectra to plot")
@@ -138,13 +144,15 @@ class Plot(object):
             print("-0 optionally plot zero intensity line(s)")
             print("-MINEL optionally set the lowest elevation allowed for calibration obs (default %7.1f)" % (self.lowel))            
             print("")
-            print("Glen Langston - NSF June 7, 2021")
+            print("Glen Langston - NSF September 15, 2021")
             return ["",""]
 
         iarg = 0
         # must be some arguments, parse them
         while iarg < nargs:
 
+            print("Arg[%d] = %s" % (iarg, args[iarg]))
+            
             # if folding data
             if args[iarg].upper() == '-F':
                 print('Folding specectra')
@@ -159,6 +167,9 @@ class Plot(object):
                 iarg = iarg + 1
                 self.xa = int( args[iarg])
                 print('Plotting starting at channel: %4d' % (self.xa))
+            elif args[iarg].upper() == '-BASE':
+                self.doBaseline = True
+                print("Fitting and subtracking a baseline")
             elif args[iarg].upper() == '-C':
                 self.flagCenter = True
             elif args[iarg].upper() == '-E':   # if setting ending sample
@@ -169,6 +180,10 @@ class Plot(object):
                 self.maxvel = np.float( args[iarg])
                 print('Maximum (high) velocity for sum: %7.2f km/sec'\
                       % (self.maxvel))
+            elif args[iarg].upper() == "-I":
+                iarg=iarg+1
+                self.tint = np.float(args[iarg])
+                print('Spectral integration time for averaging: %f' % (self.tint))
             elif args[iarg].upper() == '-L':
                 iarg = iarg+1
                 self.minvel = np.float( args[iarg])
@@ -204,24 +219,23 @@ class Plot(object):
             elif args[iarg].upper() == '-VB':   # now look for flags with arguments
                 iarg = iarg+1
                 self.maxvel = float(args[iarg])
-                print('Maximum velocity for baseline fit: %7.2f km/sec ' \
-                      % (self.maxvel))
+                print('Maximum velocity for baseline fit: %7.2f km/sec '  % (self.maxvel))
             elif args[iarg].upper() == '-CEN':   # if nU ref is provided (in MHz)
                 iarg = iarg+1
                 self.nuRefFreq = float(args[iarg])
                 print( 'Reference Frequency : %9.3f MHz' % (self.nuRefFreq))
-            elif sys.argv[iarg].upper() == '-MINEL':  # if min elevation
+            elif args[iarg].upper() == '-MINEL':  # if min elevation
                 iarg = iarg + 1
-                self.lowel = float( sys.argv[iarg])
+                self.lowel = float( args[iarg])
                 print(( "Using elevations > %7.2f (d) for Cold load obs." \
                         % (self.lowel)))
-            elif sys.argv[iarg].upper() == '-W':
+            elif args[iarg].upper() == '-W':
                 self.writeKelvin = True
             elif args[iarg].upper() == '-Z':     # label written files
                 iarg = iarg+1
                 self.fileTag = str(args[iarg])
                 print( 'File tag: %s' % (self.fileTag))
-            elif sys.argv[iarg].upper() == '-0':
+            elif args[iarg].upper() == '-0':
                 doZero = True
                 print('Plotting zero intensity lines')
             else:
@@ -230,7 +244,9 @@ class Plot(object):
         # returns the file names/directories
         if iarg >= nargs:
             return ["",""]
-        names = args[(iarg-1):]
+        names = args[iarg:]
+        print("Observation Files and Directories:")
+        print(names)
         return names
     # end of help/parsing arguments
 
@@ -612,7 +628,7 @@ class Plot(object):
         tStdB = np.std(trx[n46:n56])
         tRms  = (tStdA + tStdB) * .5
 
-        #at this point, only the hot load observations are used to compute sys
+        #at this point, only the hot load observations are used to compute T  sys
         #No cold observations used for calibration, except for tRxMiddle
 
         print("Median Receiver Temp: %7.2f +/- %5.2f (%5.2f %5.2f) (K)" % \
@@ -643,20 +659,67 @@ class Plot(object):
             self.minGlat = -30.
             self.maxGlat = 30.
         
-    def splitNames( self, names):
+    def splitNames( self, names, doDebug=False):
         """
         splitNames parses the names in a list and also expands directories
         to include all files in any directories found
         """
-        names = names.split()
+        if isinstance( names, str):
+            names = names.split()
         names = sorted(names)
         nnames = len(names)
-        print ("Found %d file names" % (nnames))
+        countast = 0
+        counthot = 0
+        astnames = []
+        hotnames = []
+        for aname in names:
+            if os.path.isdir(aname):
+                newastnames = list(glob.glob(os.path.join(aname,'*.ast')))
+                newhotnames = list(glob.glob(os.path.join(aname,'*.hot')))
+                if countast == 0:
+                    astnames = newastnames
+                else:
+                    for anothername in newastnames:
+                        astnames.append(anothername)
+                if counthot == 0:
+                    hotnames = newhotnames
+                else:
+                    for anothername in newhotnames:
+                        notnames.append(anothername)
+                countast = countast + len(newastnames)
+                counthot = counthot + len(newhotnames)
+            else:
+                if ".ast" in aname:
+                    astnames.append(aname)
+                    countast = countast + 1
+                elif ".hot" in aname:
+                    hotnames.append(aname)
+                    counthot = counthot + 1
+        # need files in time order which happens to be alphabetical order too
+        temp = astnames
+        astnames = sorted(temp)
+        temp = hotnames
+        hotnames = sorted(temp)
+        if doDebug:
+            print ("Found %d Ast file names" % (countast))
+            if countast == 1:
+                print("%s" % (astnames[0]))
+            elif countast < 1:
+                print("No Ast files found")
+            else:
+                print("%s to %s" % (astnames[0], astnames[countast-1]))
+            print ("Found %d Hot file names" % (counthot))
+            if counthot == 1:
+                print("%s" % (hotnames[0]))
+            elif countast < 1:
+                print("No Hot files found")
+            else:
+                print("%s to %s" % (hotnames[0], hotnames[counthot-1]))
 
         # end of splitNames
-        return names
+        return astnames,hotnames
         
-    def raw(self, names):
+    def raw(self, names=[""]):
         """
         Plot all files in the names list
         """
@@ -671,7 +734,7 @@ class Plot(object):
             print( "Ploting Intensity versus Velocity")
 
         linestyles = ['-','-','--','-.','-','--','-.','-','--','-.','-','--','-.','-','--','-.','-','--','-','-','--','-.','-','--','-.','-','--','-.','-','--','-.','-','--','-.','-','--','-.']
-        colors = ['g', 'b', 'r', '-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g','-b','-r','-g']
+        colors = ['g', 'b','r','b','r','g','b','r','g','b','r','g','b','r', 'g','b','r','g','b','r','g','b','r','g','b','r','g','b','r','g','b','r','g', 'b','r','g','b','r','g']
 
         xallmax = -9.e9
         xallmin =  9.e9
@@ -684,7 +747,7 @@ class Plot(object):
         # initialize spectrum for reading and plotting
         rs = radioastronomy.Spectrum()
 
-        names = self.splitNames(names)
+        astnames,hotnames = self.splitNames(names)
         
         # plot no more than N spectra
         for filename in names:
@@ -778,7 +841,7 @@ class Plot(object):
               % (ymax, ymed, ymax/ymed, rs.count, label))
             if self.nplot <= 0 and self.maxPlot > 0:
                 fig,ax1 = plt.subplots(figsize=(10,6))
-                fig.canvas.set_window_title(date)
+                # fig.canvas.set_window_title(date)
                 for tick in ax1.xaxis.get_major_ticks():
                     tick.label.set_fontsize(14) 
                 for tick in ax1.yaxis.get_major_ticks():

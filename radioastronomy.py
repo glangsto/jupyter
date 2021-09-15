@@ -3,6 +3,7 @@
 Class defining a Radio Frequency Spectrum
 Includes reading and writing ascii files
 HISTORY
+21SEP15 GIL try PyEphem if pyephem is not available
 20DEC28 GIL fix parsing header separately from data
 20DEC16 GIL file header
 20NOV27 GIL separate the reading of the file header from the data
@@ -47,12 +48,17 @@ ephemOK = True
 try:
     import ephem
 except ImportError:
-    print('Ephemerous Python Code needed!')
-    print('In Linux type:')
-    print('       sudo apt-get install python-dev')
-    print('       sudo apt-get install python-pip')
-    print('       sudo pip install pyephem')
-    print('')
+    try:
+        import PyAstronomy
+    except:
+        print('Ephemerous Python Code needed!')
+        print('In Linux type:')
+        print('       sudo apt-get install python-dev')
+        print('       sudo apt-get install python-pip')
+        print('       sudo pip install pyephem')
+        print(' - or - ')
+        print('       sudo pip3 install PyAstronomy')
+        print('')
     ephemOK = False
 #    exit()
 
