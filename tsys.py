@@ -10,9 +10,9 @@ Revised to store more data
 try:
     import statistics
 except ImportError:
-    print 'Missing statistics python Code!'
-    print 'If using Linux, type the following:'
-    print '  sudo pip install statistics'
+    print('Missing statistics python Code!')
+    print('If using Linux, type the following:')
+    print('  sudo pip install statistics')
     raise RuntimeError("Please Install statistics!")
     
 import radioastronomy
@@ -73,7 +73,7 @@ class Tsys(object):
         if (chot - ccold) != 0:
             tsys = ((self.dt * ccold))/(chot - ccold)
         else:
-            print "No differnce between hot and cold load counts"
+            print("No differnce between hot and cold load counts")
         return tsys
 
     def tcalc( self, yhot, ycold, yoff):
@@ -135,7 +135,7 @@ class Tsys(object):
         samples[indicies] = self.epsilon
         thot = statistics.median( samples[:MAXCHAN]*self.gain[:MAXCHAN])
         if thot > self.dt:
-            print "gaincalc: Hot Load Equivalent Temperature: %8.3f (K)" % (thot)
+            print("gaincalc: Hot Load Equivalent Temperature: %8.3f (K)" % (thot))
         self.gain = thot/samples[:MAXCHAN]
         return
 
