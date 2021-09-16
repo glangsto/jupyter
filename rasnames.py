@@ -67,4 +67,26 @@ def splitNames( names, typea=".ast", typeb=".hot", doDebug=False):
         print ("Found %d files name of types: '%s' '%s'" % (count, typea, typeb))
     # end of splitNames
     return typenames, count
+
+def parsetime( utcstr, firstdate, lastdate):
+    """
+    parsetime breaks up a UTC time string (21-09-16T12_34_56.789) into
+    date and time parts, then keeps track of changes in dates
+    """
+    utcstr = str(utcstr)
+    
+    parts = utcstr.split('T')
+    date  = parts[0]
+    if date != lastdate:
+        print("Date: %s" % (date))
+        if firstdate == "":
+            firstdate = date
+        lastdate = date            
+    time  = parts[1]
+    # want 12:34:56 format time
+    time  = time.replace('_',':')
+    parts  = time.split('.')
+    time = parts[0]
+    return time, date, firstdate, lastdate
+
         

@@ -7,6 +7,7 @@
 #
 import matplotlib as mpl
 import numpy as np
+import copy
 import radioastronomy
 import interpolate
 import gainfactor as gf
@@ -67,8 +68,9 @@ class Plot(object):
         self.nuoh3= 1667.359   # OH Line
         self.nuoh4= 1720.530   # OH Line
 
-        # select the frequency for plotting velocities
+        # select the default frequency for plotting velocities
         self.nuRefFreq = self.nuh1
+        self.c = 299792.458  # (Speed of light  km/sec)
 
         self.myTitle = myTitle    # input plot Title
 
@@ -114,6 +116,17 @@ class Plot(object):
         self.maxGLat = 0.
         self.tint = 30.
         
+        # parameters for determining a change of obs
+        self.nave = 0
+        self.lastel = 999.
+        self.lastaz = 999.
+        self.lastgain = 0.
+        self.beginutc = 0.
+        self.endutc = 0.
+        # store new spectra here if a change is found
+        self.next = radioastronomy.Spectrum()
+        self.next.tint = 0.   # indicate no data yet
+        
         # end of init
         return
 
@@ -141,6 +154,7 @@ class Plot(object):
             print("-O <dir> optionally output intermediate, average files")
             print("-P <dir> write PNG and PDF files instead of showing plot")
             print("-Q optionally plot intensity versus freQuency, instead of velocity")
+            print("-R optionally flag known RFI Lines")
             print("-S <filename> optionally set summary file name")
             print("-U optionally update reference frequency for a different line")
             print("   ie -U 1612.231, 1665.402, 1667.349, 1720.530 or 1420.40575")
@@ -156,7 +170,8 @@ class Plot(object):
         # must be some arguments, parse them
         while iarg < nargs:
 
-            print("Arg[%d] = %s" % (iarg, args[iarg]))
+            if self.verbose:
+                print("Arg[%d] = %s" % (iarg, args[iarg]))
             
             # if folding data
             if args[iarg].upper() == '-F':
@@ -176,7 +191,8 @@ class Plot(object):
                 self.doBaseline = True
                 print("Fitting and subtracking a baseline")
             elif args[iarg].upper() == '-C':
-                self.flagCenter = True
+                self.flagCenter = True           
+
             elif args[iarg].upper() == '-E':   # if setting ending sample
                 iarg = iarg + 1
                 self.xb = int( args[iarg])
@@ -218,6 +234,7 @@ class Plot(object):
                 self.plotFrequency = True
             elif args[iarg].upper() == '-R':
                 self.flagRfi = True
+                print("Flagging RFI")
             elif args[iarg].upper() == '-T':   # if plot title provided
                 iarg = iarg+1
                 self.myTitle = str(args[iarg])
@@ -271,6 +288,72 @@ class Plot(object):
         names = self.help(argstring)
         return names
 
+    def check_obs( self, ave_spec, in_spec):
+        """
+        check_obs() looks for changes in the observing parameters and/or
+        integration time exceeded.
+        This program keeps track of the last spectrum, that was not
+        averaged because of the gain/angle/time change.  The last spectrum
+        becomes "next"
+        both arguements are RAS spectra
+        
+        """
+ 
+        newobs = False
+        if self.nave <= 0.:
+            if self.next.durationSec > 0.:
+                # if the previous file duration was longer than the integration time
+                if self.next.durationSec > self.tint:
+                    ave_spec = self.next
+                    self.next = in_spec
+                    newobs = True
+                    self.nave = 0
+                    return newobs, ave_spec
+                else: # observations are shorter than the averaging time
+                    ave_spec, self.nave, self.beginutc, self.endutc = \
+                        self.average_spec( ave_spec, self.next, self.nave, self.beginutc, self.endutc)
+                    # flag don't use the previous spectrum again
+                    self.next.durationSec = 0.
+            else:  # else check if input spectrum exceeds average time
+                if in_spec.durationSec > self.tint:
+                    newobs = True
+                    self.nave = 0
+                    return newobs, in_spec
+                # else no previous spectra, just save the weighted input spectrum
+                ave_spec, self.nave, self.beginutc, self.endutc = \
+                    self.average_spec( ave_spec, in_spec, self.nave, self.beginutc, self.endutc)
+        # now check if input spectrum is the start of a new spectrum
+            
+        if in_spec.telel != ave_spec.telel:
+            newobs = True
+            if self.verbose:
+                print("Elevation change from: %7.1f to %7.1f (deg)" % (ave_spec.telel, in_spec.telel))
+            self.next = in_spec
+            ave_spec = self.normalize_spec( ave_spec, self.beginutc, self.endutc)
+            self.nave = 0
+            return newobs, ave_spec
+                
+        if in_spec.telaz != ave_spec.telaz:
+            newobs = True
+            if self.verbose:
+                print("Azimuth change from: %7.1f to %7.1f (deg)" % (ave_spec.telaz, in_spec.telaz))
+            self.next = in_spec
+            ave_spec = self.normalize_spec( ave_spec, self.beginutc, self.endutc)
+            self.nave = 0
+            return newobs, ave_spec
+
+        ave_spec, self.nave, self.beginutc, self.endutc = \
+            self.average_spec( ave_spec, in_spec, self.nave, self.beginutc, self.endutc) 
+        # now get duration including this observation
+        
+        aveutc, duration = radioastronomy.aveutcs( self.beginutc, self.endutc)
+        if duration > self.tint:
+            ave_spec = self.normalize_spec( ave_spec, self.beginutc, self.endutc)
+            self.nave = 0
+            newobs = True
+        # end of check_obs()
+        return newobs, ave_spec
+        
     def average_spec( self, ave_spec, in_spec, nave, firstutc, lastutc):
         """
         Averages spectra/weight functions by observing duration
@@ -290,9 +373,7 @@ class Plot(object):
             n6 = int(nData/6)
             n56 = int(5*n6)            
             medianData = np.median( in_spec.ydataA[n6:n56])
-            medianScale = np.median( in_spec.ydataA[n6:n56])
-            print(( "Input: %8.3f, count: %6d; Scale: %8.3f" \
-                    % (medianData, in_spec.count, medianScale)))
+            print(( "Input: %8.3f, count: %d" % (medianData, in_spec.count)))
 
         # if restarting the sum
         if nave == 0:
@@ -315,6 +396,7 @@ class Plot(object):
                 (in_spec.ydataA * in_spec.durationSec)
             # keep track of observing time for weighted sum
             ave_spec.durationSec = ave_spec.durationSec + in_spec.durationSec
+            ave_spec.count = ave_spec.count + in_spec.count
         
         return ave_spec, nave, firstutc, lastutc
     # END OF average_spec
@@ -331,7 +413,10 @@ class Plot(object):
         different integration times.
         """
         # now renormalize for total integration time
-        ave_spec.ydataA = ave_spec.ydataA/float(ave_spec.durationSec)
+        if ave_spec.durationSec > 0.:
+            ave_spec.ydataA = ave_spec.ydataA/float(ave_spec.durationSec)
+        else:
+            print( "Normalizing spectrum with no integration time!")
         # compute average time from first and last utcs
         aveutc, duration = radioastronomy.aveutcs( firstutc, lastutc)
         ave_spec.utc = aveutc
@@ -341,7 +426,7 @@ class Plot(object):
         # end of normalize_spec()
         return ave_spec
 
-    def read_hot( self, names, ave_hot):
+    def read_hot( self, names):
         """
         read_hot() reads in all files in the names list and averages hot load
         observations.   The hot load file is returned.
@@ -361,30 +446,19 @@ class Plot(object):
         if (self.hotFileName != ""):
             self.ave_hot.read_spec_ast(self.hotFileName)
             if doScaleAve:
-                ave_hot.ydataA = ave_hot.ydataA/ave_hot.count
+                self.ave_hot.ydataA = self.ave_hot.ydataA/self.ave_hot.count
             else:
-                ave_hot.ydataA = ave_hot.ydataA/ave_hot.nave
+                self.ave_hot.ydataA = self.ave_hot.ydataA/self.ave_hot.nave
             self.nhot = 1
             # prepare transfer for gain calculation
             self.hv = self.ave_hot.ydataA
-            return
+            return self.nhot
         # only process the hot files
         hotnames, nhot = rasnames.splitNames( names, ".hot", "")
         
+        count = 0;
         # now run through and find hot and cold loads obs
         for filename in hotnames:
-
-            parts = filename.split('/')
-            nparts = len(parts)
-            if nparts == 1:
-                aname = parts[0]
-            else:
-                aname = parts[nparts-1]
-            parts = aname.split('.')
-            nparts = len(parts)
-            if nparts < 2:
-                print(( 'File is not an astronomy file: %s' % (filename)))
-                continue
 
             rs.read_spec_ast(filename)
             if self.doScaleAve:
@@ -392,40 +466,42 @@ class Plot(object):
             else:
                 rs.ydataA = rs.ydataA/rs.nave
         
+          
             nChan = len( rs.ydataA)
             if nChan != 32 and nChan != 64 and nChan != 128 and nChan != 256 \
                and nChan != 512 and nChan != 1024 and nChan != 2048 and \
                    nChan != 4096:
                 print("Unusual data length (%d), file %s" % (nChan, filename))
                 continue
-            rs.azel2radec()    # compute ra,dec from az,el
 
             # if a hot load observation
             if rs.telel < 0:
-                if nhot == 0:
+                if count == 0:
                     firstutc = rs.utc
                     lastutc = rs.utc
                     minel = rs.telel
-
+                    self.ave_hot = copy.deepcopy( rs)
+                count = count + 1
+  
                 # accumulate spectra, nhot is updated also
                 self.ave_hot, nhot, firstutc, lastutc = \
-                    average_spec( self.ave_hot, rs, nhot, firstutc, lastutc)
+                    self.average_spec( self.ave_hot, rs, nhot, firstutc, lastutc)
                 if minel > rs.telel:
                     minel = rs.telel
-        if nhot > 0:
+        if count > 0:
             print(( "Found %3d Hot load observations" % (nhot)))
-            self.ave_hot = normalize_spec( self.ave_hot, firstutc, lastutc)
+            self.ave_hot = self.normalize_spec( self.ave_hot, firstutc, lastutc)
         else:
             print( "No Hot load data, can not calibrate")
-            return
+            return 0
             # exit()
 
-        self.nhot = nhot
+        self.nhot = count
             
         # do more cleanup on spectra for RFI
         yv = copy.deepcopy(self.ave_hot.ydataA)
         if self.flagRfi:
-            xv = ave_hot.xdata * 1.E-6
+            xv = self.ave_hot.xdata * 1.E-6
             # interpolate rfi
             hv = interpolate.lines( linelist, linewidth, xv, yv)
         else:
@@ -441,21 +517,17 @@ class Plot(object):
         # all outputs are part of object
         self.ave_hot.ydataA = hv
         self.hv = hv
-        self.minel = minel
-        self.maxel = maxel
-        self.minGlat = minGlat
-        self.maxGlat = maxGlat
         
         # if keeping hot and cold files
         if self.doKeep and self.hotFileName == "":
-            outname = radioastronomy.utcToName( ave_hot.utc)
+            outname = radioastronomy.utcToName( self.ave_hot.utc)
             outname = outname + ".hot"  # output in counts
             # add telescope index
             outname = ("T%d-" % cpuIndex)+outname
-            n = ave_hot.nChan
+            n = self.ave_hot.nChan
             print("Ave Hot: %d: %.6f" % \
-                  (n, np.median( ave_hot.ydataA[int(n/3):int(2*n/3)])))
-            ave_hot.write_ascii_file(self.outputDir, outname)
+                  (n, np.median( self.ave_hot.ydataA[int(n/3):int(2*n/3)])))
+            self.ave_hot.write_ascii_file(self.outputDir, outname)
             print( "Wrote Average Hot  Load File: %s%s" % ("../", outname))
 
         if self.verbose:
@@ -465,7 +537,7 @@ class Plot(object):
                    % (minel, maxel))
 
         # end of read hot
-        return
+        return nhot
 
     def read_angles( self, names):
         """
@@ -517,7 +589,7 @@ class Plot(object):
         # end of read_angles()
         return ncold
 
-    def read_cold( names, ave_cold, lowel, lowGlat):
+    def read_cold( names, lowel, lowGlat):
         """
         read_cold() checks files and averages selected files with 
         high elevation and galactic Latitude.
@@ -548,15 +620,17 @@ class Plot(object):
                 if ncold == 0:
                     firstutc = rs.utc
                     lastutc = rs.utc
-                ave_cold, ncold, firstutc, lastutc = \
-                    average_spec( ave_cold, rs, ncold, firstutc, lastutc)
+                    self.ave_cold = copy.deepcopy(rs)
+                    
+                self.ave_cold, ncold, firstutc, lastutc = \
+                    average_spec( self.ave_cold, rs, ncold, firstutc, lastutc)
 
             # end of all files to average
         if ncold < 1:
             print( "No high elevation data: can not calibrate")
             return 0
         else:
-            ave_cold = normalize_spec( ave_cold, firstutc, lastutc)
+            self.ave_cold = self.normalize_spec( self.ave_cold, firstutc, lastutc)
 
         if flagRfi:
             cv = ave_cold.ydataA
@@ -574,7 +648,6 @@ class Plot(object):
             yv[icenter+1] = (yv[icenter-2] + 3.*yv[icenter+2])*.25
             
         ave_cold.ydataA = cv
-        self.ave_cold = copy.deepcopy( ave_cold)
         self.cv = cv
         self.ncold = ncold
             
@@ -654,7 +727,7 @@ class Plot(object):
             self.maxGlat = 30.
         # end of computeGain
         return
-                
+        
     def raw(self, names=[""]):
         """
         Plot all files in the names list
@@ -677,18 +750,17 @@ class Plot(object):
         xallmin =  9.e9
         yallmax = -9.e9
         yallmin =  9.e9
-        c = 299792.458  # (Speed of light  km/sec)
-
-        # keep track of dates for printing
-        firstdate = ""
-        lastdate = ""
 
         # initialize spectrum for reading and plotting
         rs = radioastronomy.Spectrum()
 
         # find all relevant files in directories and lists
         files, count = rasnames.splitNames(names, ".ast", ".hot", doDebug=self.verbose)
+        if count < 1:
+            print("No RAS files, can not calibrate")
+            return
         
+        count = 0 # restart the counting
         # plot no more than N spectra
         for filename in files:
             # a file name must have a 3 letter extension (ie .hot, .ast)
@@ -698,28 +770,22 @@ class Plot(object):
                 print('%s' % (filename))
 
             rs.read_spec_ast( filename)
-            parts = filename.split('/')
-            nparts = len(parts)
-            aname = parts[nparts-1]
-            parts = aname.split('.')
-            aname = parts[0]
+            if count == 0:
+                ave_spec = rs
+                self.nave = 0
+            count = count + 1
+            
             # now compute strings for plotting
-            strtime = rs.utc.isoformat()
-            parts = strtime.split('T')
-            date  = parts[0]
-            if date != lastdate:
-                print("Date: %s" % (date))
-                if firstdate == "":
-                    firstdate = date
-                lastdate = date            
-            time  = parts[1]
-            time  = time.replace('_',':')
-            parts  = time.split('.')
-            time = parts[0]
-    
-            gallon = rs.gallon
-            gallat = rs.gallat
-            xv = rs.xdata  * 1.E-6 # convert to MHz
+            utcstr = rs.utc.isoformat()
+            time, date, self.firstdate, self.lastdate = rasnames.parsetime( utcstr, self.firstdate, self.lastdate)
+
+            newobs, ave_spec = self.check_obs( ave_spec, rs)
+            # wait until a new obs to plot
+            if not newobs:
+                continue
+                
+            xv = ave_spec.xdata  * 1.E-6 # convert to MHz
+            # deal with spectra with different numbers of channels.
             nData = len( xv)
             n6 = int(nData/6)
             n56 = 5*n6
@@ -730,45 +796,27 @@ class Plot(object):
                 self.xb = nData
             if self.xb > nData:
                 self.xb = nData
-        
-            if self.firstdate == "":
-                self.firstdate = date
-            self.lastdate = date
-    
-            self.vel = np.zeros(nData)
-            for jjj in range (0, nData):
-                self.vel[jjj] = c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
 
-            if not self.plotFrequency:
-                self.xa, self.xb = gf.velocity_to_indicies( self.vel, \
-                                                            minvel, maxvel)
-    
-            # normize for different integration times
-            if self.doScaleAve:
-                rs.ydataA = rs.ydataA/rs.count
-            else:
-                rs.ydataA = rs.ydataA/rs.nave
-
-            # must first determine if data are already scaled
-            yv = rs.ydataA * self.scalefactor
+            yv = ave_spec.ydataA
+            # ignore the 1/6 of the data at each end of spectrum
             ymedian = np.median(yv[n6:n56])
 
-            # if the latest software, the scale factor is just 1.
-            if ymedian < .001:
-                yv = rs.ydataA * self.scalefactor
-            else:
-                self.scalefactor = 1.0
+            if self.flagRfi:   # RFI is always flagged in topocentric frequencies
+                # interpolate rfi
+                yv = interpolate.lines( self.linelist, self.linewidth, xv, yv) 
 
-            if not self.plotFrequency:
+            if not self.plotFrequency:   # if plotting velocity
+                self.vel = np.zeros(nData)
+                for jjj in range (0, nData):
+                    self.vel[jjj] = c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
+                self.xa, self.xb = gf.velocity_to_indicies( self.vel, \
+                                                            minvel, maxvel)
                 xv = vel
+            # keep track of x axis for plot sizing
             xmin = min(xv[self.xa:self.xb])
             xmax = max(xv[self.xa:self.xb])
             xallmin = min(xmin,xallmin)
             xallmax = max(xmax,xallmax)
-
-            if self.flagRfi:
-                # interpolate rfi
-                yv = interpolate.lines( self.linelist, self.linewidth, xv, yv) 
 
             if self.flagCenter:             # if flagging spike in center of plot
                 # remove spike in center of the plot
@@ -776,16 +824,18 @@ class Plot(object):
                 yv[icenter] = (yv[icenter-2] + yv[icenter+2])*.5
                 yv[icenter-1] = (3.*yv[icenter-2] + yv[icenter+2])*.25
                 yv[icenter+1] = (yv[icenter-2] + 3.*yv[icenter+2])*.25
-            
+
+            # prepare to report intensity summary
             ymin = min(yv)
             ymax = max(yv)
             ymed = np.median(yv)
             coordtitle = '  Time   AZ,EL (deg)  Lon,Lat (deg)' 
             if self.nplot == 0:
                 print("%s    Max   Median    Count  " % (coordtitle))
-            coordlabel = '%s %5s,%5s  %5.1f,%5.1f' % (time, rs.telaz, rs.telel, gallon, gallat)        
+            coordlabel = '%s %5s,%5s  %5.1f,%5.1f' % \
+                (time, ave_spec.telaz, ave_spec.telel, ave_spec.gallon, ave_spec.gallat)        
             # summarize the minimum and median values
-            print('%s %8.1f %8.1f  %8d' % (coordlabel, ymax, ymed, rs.count))
+            print('%s %8.1f %8.1f  %8d' % (coordlabel, ymax, ymed, ave_spec.count))
             if self.nplot <= 0 and self.maxPlot > 0:
                 fig,ax1 = plt.subplots(figsize=(10,6))
                 # fig.canvas.set_window_title(date)
@@ -794,16 +844,12 @@ class Plot(object):
                 for tick in ax1.yaxis.get_major_ticks():
                     tick.label.set_fontsize(14) 
 
-      
             if self.nplot > self.maxPlot:
                 break
-            note = rs.site
+            note = ave_spec.site
             yallmin = min(ymin,yallmin)
             yallmax = max(ymax,yallmax)
             plt.xlim(xallmin,xallmax)
-
-            # scale min and max intensities for nice plotting
-            plt.ylim(0.9*yallmin,1.25*yallmax)
 
             if self.plotFrequency:
                 plt.plot(xv[self.xa:self.xb], yv[self.xa:self.xb], \
@@ -815,6 +861,10 @@ class Plot(object):
                          linestyle=linestyles[(self.nplot % nstyles)], label=coordlabel, lw=2)
             self.nplot = self.nplot + 1
         # end for all names
+        # clean up averaging parameters
+        self.nave = 0
+        self.next.durationSec = 0.
+        
         if (self.maxPlot < 1) or (self.nplot < 1):
             print("No Plots, exiting")
             return
@@ -822,7 +872,10 @@ class Plot(object):
     
         if self.myTitle == "":
             self.myTitle = note
-    
+  
+        # scale min and max intensities for nice plotting
+        plt.ylim(0.9*yallmin,1.25*yallmax)
+
         plt.title(self.myTitle, fontsize=16)
         plt.xlabel('Frequency (MHz)',fontsize=16)
         ylabel = 'Intensity (%s)' % rs.bunit
@@ -830,6 +883,7 @@ class Plot(object):
         plt.legend(loc='upper right')
         # zero the plot count for next execution
         self.nplot = 0 
+ 
         # if writing files
         if self.doPlotFile:
             self.firstdate = self.firstdate[2:]
@@ -851,16 +905,16 @@ class Plot(object):
         ###
         # Plot Tsys calibrated spectra
         ###
-        astnames = rasnames.splitNames(names,".ast", "", doDebug=self.verbose)
-        
-        nhot = self.read_hot( names, self.ave_hot)
+        astnames, nast = rasnames.splitNames(names,".ast", "", doDebug=self.verbose)
+        hotnames, nhot = rasnames.splitNames(names,".hot", "", doDebug=self.verbose)
+
+        print("Starting Reading of Hot Load observations")
+        nhot = self.read_hot( hotnames)
         if nhot < 1:
             print("No Hot load Observations, can not calibrate")
-            
-        lowel = 45. # minimum elevation for good calibration
-        lowGlat = 30. # minimum galactic latitude for good calibration
-        
-        ncold = self.read_cold( names, self.ave_cold, lowel, lowGlat)
+ 
+        print("Starting Reading of Cold observations")
+        ncold = self.read_cold( astnames, self.lowel, self.lowGlat)
         if ncold < 1:
             print("No Cold load files above minimum eleation %8.1f deg" % (lowel))
             print("And minimum Galactic Latitude: %8.1f deg" % (lowGlat))
@@ -868,17 +922,200 @@ class Plot(object):
             lowel = self.minel
             minGlat = self.minGlat
             ncold = self.read_cold( names, self.ave_cold, lowel, lowGlat)
-                                     
+            if ncold < 1:
+                print("No High Elevation Files, can not calibrate")
+                return
+            
+        # now, based on hot and cold loads, compute gains for remaining spectra
+        self.computeGain()
+        
         if self.verbose:
             print("Names:")
             nnames = len(astnames)
             for iii in range(min(nnames,4)):
                 print("%4d: %s" % (iii, names[iii]))
-            
 
+        # to create plots in cronjobs, must use a different backend
+        if self.doPlotFile:
+            mpl.use('Agg')
+        import matplotlib.pyplot as plt
+
+        if self.plotFrequency:
+            print( "Ploting Intensity versus Frequency")
+        else:
+            print( "Ploting Intensity versus Velocity")
+
+        linestyles = ['-','-','-', '--', '--','--','-.', '-.', '-.']
+        colors = ['b','g','r','m','c']
+        nstyles = len(linestyles)
+        ncolors = len(colors)
+        xallmax = -9.e9
+        xallmin =  9.e9
+        yallmax = -9.e9
+        yallmin =  9.e9
+
+        # initialize spectrum for reading and plotting
+        rs = radioastronomy.Spectrum()
+        
+        count = 0
+        # plot no more than N spectra
+        for filename in astnames:
+            # a file name must have a 3 letter extension (ie .hot, .ast)
+            if len(filename) < 5:
+                continue
+            if self.verbose:
+                print('%s' % (filename))
+
+            rs.read_spec_ast( filename)
+            # need to initialize the ave spectrum similar to read spectrum
+            if count == 0:
+                ave_spec = rs
+                self.nave = 0
+            count = count + 1
+            
+            # now compute strings for plotting
+            utcstr = rs.utc.isoformat()
+            time, date, self.firstdate, self.lastdate = rasnames.parsetime( utcstr, self.firstdate, self.lastdate)
+
+            newobs, ave_spec = self.check_obs( ave_spec, rs)
+            # wait until a new obs to plot
+            if not newobs:
+                continue
+                
+            xv = ave_spec.xdata  * 1.E-6 # convert to MHz
+            # deal with spectra with different numbers of channels.
+            nData = len( xv)
+            n6 = int(nData/6)
+            n56 = 5*n6
+
+            if self.xa < 0:
+                self.xa = 0
+            if self.xb < 0:
+                self.xb = nData
+            if self.xb > nData:
+                self.xb = nData
+
+            yv = ave_spec.ydataA
+            # ignore the 1/6 of the data at each end of spectrum
+            ymedian = np.median(yv[n6:n56])
+
+            if self.flagRfi:   # RFI is always flagged in topocentric frequencies
+                # interpolate rfi
+                yv = interpolate.lines( self.linelist, self.linewidth, xv, yv) 
+
+            if not self.plotFrequency:   # if plotting velocity
+                self.vel = np.zeros(nData)
+                for jjj in range (0, nData):
+                    self.vel[jjj] = c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
+                self.xa, self.xb = gf.velocity_to_indicies( self.vel, \
+                                                            minvel, maxvel)
+                xv = vel
+            # keep track of x axis for plot sizing
+            xmin = min(xv[self.xa:self.xb])
+            xmax = max(xv[self.xa:self.xb])
+            xallmin = min(xmin,xallmin)
+            xallmax = max(xmax,xallmax)
+
+            if self.flagCenter:             # if flagging spike in center of plot
+                # remove spike in center of the plot
+                icenter = int(nData/2)
+                yv[icenter] = (yv[icenter-2] + yv[icenter+2])*.5
+                yv[icenter-1] = (3.*yv[icenter-2] + yv[icenter+2])*.25
+                yv[icenter+1] = (yv[icenter-2] + 3.*yv[icenter+2])*.25
+
+            # prepare to report intensity summary
+            ymin = min(yv)
+            ymax = max(yv)
+            ymed = np.median(yv)
+            coordtitle = '  Time   AZ,EL (deg)  Lon,Lat (deg)' 
+            if self.nplot == 0:
+                print("%s    Max   Median    Count  " % (coordtitle))
+            coordlabel = '%s %5s,%5s  %5.1f,%5.1f' % \
+                (time, ave_spec.telaz, ave_spec.telel, ave_spec.gallon, ave_spec.gallat)        
+            # summarize the minimum and median values
+            print('%s %8.1f %8.1f  %8d' % (coordlabel, ymax, ymed, ave_spec.count))
+            if self.nplot <= 0 and self.maxPlot > 0:
+                fig,ax1 = plt.subplots(figsize=(10,6))
+                # fig.canvas.set_window_title(date)
+                for tick in ax1.xaxis.get_major_ticks():
+                    tick.label.set_fontsize(14) 
+                for tick in ax1.yaxis.get_major_ticks():
+                    tick.label.set_fontsize(14) 
+
+            if self.nplot > self.maxPlot:
+                break
+            note = ave_spec.site
+            yallmin = min(ymin,yallmin)
+            yallmax = max(ymax,yallmax)
+            plt.xlim(xallmin,xallmax)
+
+            if self.plotFrequency:
+                plt.plot(xv[self.xa:self.xb], yv[self.xa:self.xb], \
+                         colors[(self.nplot % ncolors) ], \
+                         linestyle=linestyles[(self.nplot % nstyles)], label=coordlabel, lw=2)
+            else:
+                plt.plot(xv[self.xa:self.xb], yv[self.xa:self.xb], \
+                         colors[(self.nplot % ncolors) ], \
+                         linestyle=linestyles[(self.nplot % nstyles)], label=coordlabel, lw=2)
+            self.nplot = self.nplot + 1
+        # end for all names
+        # clean up averaging parameters
+        self.nave = 0
+        self.next.durationSec = 0.
+        
+        if (self.maxPlot < 1) or (self.nplot < 1):
+            print("No Plots, exiting")
+            return
+            # exit()
+    
+        if self.myTitle == "":
+            self.myTitle = note
+  
+        # scale min and max intensities for nice plotting
+        plt.ylim(0.9*yallmin,1.25*yallmax)
+
+        plt.title(self.myTitle, fontsize=16)
+        plt.xlabel('Frequency (MHz)',fontsize=16)
+        ylabel = 'Intensity (%s)' % rs.bunit
+        plt.ylabel(ylabel, fontsize=16)
+        plt.legend(loc='upper right')
+        # zero the plot count for next execution
+        self.nplot = 0 
+ 
+        # if writing files
+        if self.doPlotFile:
+            self.firstdate = self.firstdate[2:]
+            if self.fileTag == "":
+                self.fileTag = "R-" + self.firstdate
+            outpng = self.outFileDir + self.fileTag + ".png"
+            plt.savefig(outpng,bbox_inches='tight')
+            outpdf = self.outFileDir + self.fileTag + ".pdf"
+            plt.savefig(outpdf,bbox_inches='tight')
+            print( "Wrote files %s and %s" % (outpng, outpdf))
+        else:
+            # else show the plots
+            plt.show()
+
+
+                
+            
         # zero the plot count for next execution
         self.nplot = 0 
 
+        # if writing files
+        if self.doPlotFile:
+            self.firstdate = self.firstdate[2:]
+            if self.fileTag == "":
+                self.fileTag = "T-" + self.firstdate
+            outpng = self.outFileDir + self.fileTag + ".png"
+            plt.savefig(outpng,bbox_inches='tight')
+            outpdf = self.outFileDir + self.fileTag + ".pdf"
+            plt.savefig(outpdf,bbox_inches='tight')
+            print( "Wrote files %s and %s" % (outpng, outpdf))
+        else:
+            # else show the plots
+            plt.show()
+      
         # End of ras.tsys()
         return
     
