@@ -98,6 +98,8 @@ class Plot(object):
         self.maxGlat = -90.
         self.minel = 200.
         self.maxel = -200.
+        self.lowel = 30.
+        self.lowGlat = 30.
 
         # create places to store hot and cold files
         self.ave_hot  = radioastronomy.Spectrum()
@@ -503,7 +505,7 @@ class Plot(object):
         if self.flagRfi:
             xv = self.ave_hot.xdata * 1.E-6
             # interpolate rfi
-            hv = interpolate.lines( linelist, linewidth, xv, yv)
+            hv = interpolate.lines( self.linelist, self.linewidth, xv, yv)
         else:
             hv = yv
 
@@ -589,7 +591,7 @@ class Plot(object):
         # end of read_angles()
         return ncold
 
-    def read_cold( names, lowel, lowGlat):
+    def read_cold( self, names, lowel, lowGlat):
         """
         read_cold() checks files and averages selected files with 
         high elevation and galactic Latitude.
@@ -609,7 +611,7 @@ class Plot(object):
             if rs.telel < self.lowel:  #if elevation too low for a cold load obs
                 continue
 
-            if doScaleAve:
+            if self.doScaleAve:
                 rs.ydataA = rs.ydataA/rs.count
             else:
                 rs.ydataA = rs.ydataA/rs.nave
@@ -623,7 +625,7 @@ class Plot(object):
                     self.ave_cold = copy.deepcopy(rs)
                     
                 self.ave_cold, ncold, firstutc, lastutc = \
-                    average_spec( self.ave_cold, rs, ncold, firstutc, lastutc)
+                    self.average_spec( self.ave_cold, rs, ncold, firstutc, lastutc)
 
             # end of all files to average
         if ncold < 1:
@@ -632,22 +634,23 @@ class Plot(object):
         else:
             self.ave_cold = self.normalize_spec( self.ave_cold, firstutc, lastutc)
 
-        if flagRfi:
-            cv = ave_cold.ydataA
-            xv = ave_cold.xdata*1.E-6
+        if self.flagRfi:
+            cv = self.ave_cold.ydataA
+            xv = self.ave_cold.xdata*1.E-6
             # interpolate rfi
-            yv = interpolate.lines( linelist, linewidth, xv, cv)
+            yv = interpolate.lines( self.linelist, self.linewidth, xv, cv)
         else:
-            yv = ave_cold.ydataA
+            yv = self.ave_cold.ydataA
                 
         if self.flagCenter:             # if flagging spike in center of plot
+            nData = len( self.ave_cold.ydataA)
             # remove spike in center of the plot
             icenter = int(nData/2)
             yv[icenter] = (yv[icenter-2] + yv[icenter+2])*.5
             yv[icenter-1] = (3.*yv[icenter-2] + yv[icenter+2])*.25
             yv[icenter+1] = (yv[icenter-2] + 3.*yv[icenter+2])*.25
             
-        ave_cold.ydataA = cv
+        self.ave_cold.ydataA = cv
         self.cv = cv
         self.ncold = ncold
             
@@ -661,16 +664,17 @@ class Plot(object):
         The hot and cold files must already be computed and intensities in self.hv and self.cv
         """
 
-        nData = int(self.nData)
+        nData = len( self.ave_hot.ydataA)
         n6 = int(nData/6)
         n26 = int(2*n6)
         n46 = int(4*n6)
         n56 = int(5*n6)
 
-        self.vel = np.zeros(self.nData)
+        self.vel = np.zeros(nData)
+        xv = self.ave_cold.xdata * 1.E-6 # convert to MHz
         # create index array
         for jjj in range (0, nData):
-            self.vel[jjj] = c * (self.nuRefFreq - self.xv[jjj])/self.nuRefFreq
+            self.vel[jjj] = self.c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
 
         self.xa, self.xb = gf.velocity_to_indicies( self.vel, \
                                                     self.minvel, self.maxvel)
@@ -678,8 +682,8 @@ class Plot(object):
         gainHC = np.zeros(nData)
         for iii in range(nData):
             gainHC[iii] = (self.hv[iii] - self.cv[iii])/(self.thot - self.tcold)
-            if gainHC[iii] < EPSILON:
-                gainHC[iii] = EPSILON
+            if gainHC[iii] < self.EPSILON:
+                gainHC[iii] = self.EPSILON
 
         # the hot/cold gain ratios are only used to compute tRxMiddle
         trx = np.zeros(nData)
@@ -705,9 +709,9 @@ class Plot(object):
         # Using hot load only reduces interference effects
         self.gain = np.zeros(nData)
         for iii in range(nData):
-            self.gain[iii] = hv[iii]/(thot + tRxMiddle)
-            if self.gain[iii] < EPSILON:
-                self.gain[iii] = EPSILON
+            self.gain[iii] = (self.thot + tRxMiddle)/self.hv[iii]
+            if self.gain[iii] < self.EPSILON:
+                self.gain[iii] = self.EPSILON
 
         gainA = np.median(self.gain[n6:n26])
         gainB = np.median(self.gain[n46:n56])
@@ -808,10 +812,10 @@ class Plot(object):
             if not self.plotFrequency:   # if plotting velocity
                 self.vel = np.zeros(nData)
                 for jjj in range (0, nData):
-                    self.vel[jjj] = c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
+                    self.vel[jjj] = self.c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
                 self.xa, self.xb = gf.velocity_to_indicies( self.vel, \
-                                                            minvel, maxvel)
-                xv = vel
+                                                            self.minvel, self.maxvel)
+                xv = self.vel
             # keep track of x axis for plot sizing
             xmin = min(xv[self.xa:self.xb])
             xmax = max(xv[self.xa:self.xb])
@@ -916,12 +920,12 @@ class Plot(object):
         print("Starting Reading of Cold observations")
         ncold = self.read_cold( astnames, self.lowel, self.lowGlat)
         if ncold < 1:
-            print("No Cold load files above minimum eleation %8.1f deg" % (lowel))
-            print("And minimum Galactic Latitude: %8.1f deg" % (lowGlat))
-            print("Min El: %8.1 deg and Min Glat: %8.1f deg" % (self.minel, self.minGlat))
-            lowel = self.minel
-            minGlat = self.minGlat
-            ncold = self.read_cold( names, self.ave_cold, lowel, lowGlat)
+            print("No Cold load files above minimum eleation %8.1f deg" % (self.lowel))
+            print("And minimum Galactic Latitude: %8.1f deg" % (self.lowGlat))
+            print("Min El: %8.1f deg and Min Glat: %8.1f deg" % (self.minel, self.minGlat))
+            lowel = 1.
+            lowGlat = 1.
+            ncold = self.read_cold( astnames, lowel, lowGlat)
             if ncold < 1:
                 print("No High Elevation Files, can not calibrate")
                 return
@@ -1006,10 +1010,10 @@ class Plot(object):
             if not self.plotFrequency:   # if plotting velocity
                 self.vel = np.zeros(nData)
                 for jjj in range (0, nData):
-                    self.vel[jjj] = c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
+                    self.vel[jjj] = self.c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
                 self.xa, self.xb = gf.velocity_to_indicies( self.vel, \
-                                                            minvel, maxvel)
-                xv = vel
+                                                            self.minvel, self.maxvel)
+                xv = self.vel
             # keep track of x axis for plot sizing
             xmin = min(xv[self.xa:self.xb])
             xmax = max(xv[self.xa:self.xb])
@@ -1022,6 +1026,9 @@ class Plot(object):
                 yv[icenter] = (yv[icenter-2] + yv[icenter+2])*.5
                 yv[icenter-1] = (3.*yv[icenter-2] + yv[icenter+2])*.25
                 yv[icenter+1] = (yv[icenter-2] + 3.*yv[icenter+2])*.25
+            
+            # finally correct for the system gain
+            yv = yv * self.gain
 
             # prepare to report intensity summary
             ymin = min(yv)
@@ -1095,9 +1102,6 @@ class Plot(object):
         else:
             # else show the plots
             plt.show()
-
-
-                
             
         # zero the plot count for next execution
         self.nplot = 0 
