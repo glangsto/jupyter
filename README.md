@@ -3,7 +3,7 @@
 ### Glen Langston - National Scienc foundation - 2021 September 17
 This project, a work in progress, is intended to provide a convenient method of checking Horn Radio Telescope observations.
 The horn radio telescopes are student, teacher and hobbiest built radio telescopes that can easily observe our place in the Milky Way Galaxy.   The horns are funnels a few feet in diameter, which channel radio wavelength signals to amplifiers and software defined radios. 
-The calibration is based on Jupyter Notebooks.   Start with notebook plotting.ipynb.
+The calibration is based on Jupyter Notebooks.   Start with notebook <b>_plotting.ipynb_</b>.
 <p>
 The horn construction is described at www.WVURAIL.org
 <p>
