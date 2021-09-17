@@ -9,9 +9,10 @@ The horn construction is described at www.WVURAIL.org
 <p>
 These notebooks assume the observations are taken using Gnuradio software systems available on GitHub.
 Please see http://www.github.com/WVURAIL/gr-radio_astro for the software to make the observations.
-These notebooks only work with NSF designs found their.
+These notebooks only work with NSF designs found there.
 <p>
 The Jupyter notebooks here are only for analyzing already completed observations.
+<p>
 ### To Do:
 1. Provide utilities to convert from and to Comma separated value files.
 2. Expand the mapping code to spectral line cubes
