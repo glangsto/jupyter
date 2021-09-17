@@ -84,6 +84,7 @@ class Plot(object):
         self.minvel = -220.
         self.maxSvel = 150.   # max velocity for numerical integration 
         self.minSvel = - self.maxSvel # min velocity for numerical integration 
+        self.fitOrder = 3
         self.maxPlot = int(25)
         self.fileTag = ""
         self.firstdate = ""
@@ -307,19 +308,24 @@ class Plot(object):
                 # if the previous file duration was longer than the integration time
                 if self.next.durationSec > self.tint:
                     ave_spec = self.next
-                    self.next = in_spec
+                    self.beginutc = in_spec.utc
+                    self.endutc = in_spec.utc
                     newobs = True
                     self.nave = 0
                     return newobs, ave_spec
                 else: # observations are shorter than the averaging time
+                    self.beginutc = self.next.utc
+                    self.endutc = self.next.utc
                     ave_spec, self.nave, self.beginutc, self.endutc = \
                         self.average_spec( ave_spec, self.next, self.nave, self.beginutc, self.endutc)
                     # flag don't use the previous spectrum again
                     self.next.durationSec = 0.
             else:  # else check if input spectrum exceeds average time
+                self.beginutc = in_spec.utc
+                self.endutc = in_spec.utc
+                #self.nave is updated by self.average_spec()
                 if in_spec.durationSec > self.tint:
                     newobs = True
-                    self.nave = 0
                     return newobs, in_spec
                 # else no previous spectra, just save the weighted input spectrum
                 ave_spec, self.nave, self.beginutc, self.endutc = \
@@ -385,7 +391,7 @@ class Plot(object):
             self.nData = len(in_spec.ydataA)
             nave = 1
             # replace with duration scaled intensities
-            ave_spec.ydataA = (in_spec.ydataA * in_spec.durationSec)  
+            ave_spec.ydataA = (in_spec.ydataA * in_spec.durationSec)/float(in_spec.nave)
             # keep track of observing time for weighted sum
             ave_spec.durationSec = in_spec.durationSec
         else: # else not enough time yet, average ave_spec data
@@ -395,11 +401,11 @@ class Plot(object):
                 lastutc = in_spec.utc
             nave = nave + 1
             ave_spec.ydataA = ave_spec.ydataA + \
-                (in_spec.ydataA * in_spec.durationSec)
+                (in_spec.ydataA * in_spec.durationSec/float(in_spec.nave))
             # keep track of observing time for weighted sum
             ave_spec.durationSec = ave_spec.durationSec + in_spec.durationSec
             ave_spec.count = ave_spec.count + in_spec.count
-        
+      
         return ave_spec, nave, firstutc, lastutc
     # END OF average_spec
 
@@ -447,27 +453,25 @@ class Plot(object):
         # if reading a hot file
         if (self.hotFileName != ""):
             self.ave_hot.read_spec_ast(self.hotFileName)
-            if doScaleAve:
-                self.ave_hot.ydataA = self.ave_hot.ydataA/self.ave_hot.count
-            else:
-                self.ave_hot.ydataA = self.ave_hot.ydataA/self.ave_hot.nave
+            self.ave_hot.ydataA = self.ave_hot.ydataA/self.ave_hot.nave
             self.nhot = 1
             # prepare transfer for gain calculation
             self.hv = self.ave_hot.ydataA
             return self.nhot
         # only process the hot files
         hotnames, nhot = rasnames.splitNames( names, ".hot", "")
+        if nhot < 1:
+            print("No Hot files: can not calibrate")
+            return
         
-        count = 0;
-        # now run through and find hot and cold loads obs
+        nhot = 0;  # now restart the average, in case some files are not OK
+        self.nave = 0;  # make sure not files remain from last average
+        self.next.durationSec = 0.
+        
+        # now run through and find hot and cold loads obs        
         for filename in hotnames:
 
             rs.read_spec_ast(filename)
-            if self.doScaleAve:
-                rs.ydataA = rs.ydataA/rs.count
-            else:
-                rs.ydataA = rs.ydataA/rs.nave
-        
           
             nChan = len( rs.ydataA)
             if nChan != 32 and nChan != 64 and nChan != 128 and nChan != 256 \
@@ -475,22 +479,20 @@ class Plot(object):
                    nChan != 4096:
                 print("Unusual data length (%d), file %s" % (nChan, filename))
                 continue
-
+            
             # if a hot load observation
             if rs.telel < 0:
-                if count == 0:
+                if nhot == 0:
+                    minel = rs.telel
                     firstutc = rs.utc
                     lastutc = rs.utc
-                    minel = rs.telel
-                    self.ave_hot = copy.deepcopy( rs)
-                count = count + 1
-  
+                    # nhot will be updated by average_spec()
                 # accumulate spectra, nhot is updated also
                 self.ave_hot, nhot, firstutc, lastutc = \
                     self.average_spec( self.ave_hot, rs, nhot, firstutc, lastutc)
                 if minel > rs.telel:
                     minel = rs.telel
-        if count > 0:
+        if nhot > 0:
             print(( "Found %3d Hot load observations" % (nhot)))
             self.ave_hot = self.normalize_spec( self.ave_hot, firstutc, lastutc)
         else:
@@ -498,8 +500,7 @@ class Plot(object):
             return 0
             # exit()
 
-        self.nhot = count
-            
+        self.nhot = nhot
         # do more cleanup on spectra for RFI
         yv = copy.deepcopy(self.ave_hot.ydataA)
         if self.flagRfi:
@@ -529,6 +530,10 @@ class Plot(object):
             n = self.ave_hot.nChan
             print("Ave Hot: %d: %.6f" % \
                   (n, np.median( self.ave_hot.ydataA[int(n/3):int(2*n/3)])))
+            # multiply by number of spectra averaged to yield a plot
+            # with sufficient numerical resolution.
+            # the nave factor is removed on read
+            self.ave_hot.ydataA = self.ave_hot.ydataA*self.ave_hot.nave
             self.ave_hot.write_ascii_file(self.outputDir, outname)
             print( "Wrote Average Hot  Load File: %s%s" % ("../", outname))
 
@@ -610,20 +615,15 @@ class Plot(object):
             rs.read_spec_ast(filename)
             if rs.telel < self.lowel:  #if elevation too low for a cold load obs
                 continue
-
-            if self.doScaleAve:
-                rs.ydataA = rs.ydataA/rs.count
-            else:
-                rs.ydataA = rs.ydataA/rs.nave
-                rs.azel2radec()    # compute ra,dec from az,el
                 
             # note this test excludes low galactic latitude ranges
             if rs.gallat > lowGlat or rs.gallat < -lowGlat:
                 if ncold == 0:
+                    self.nave = 0
                     firstutc = rs.utc
                     lastutc = rs.utc
-                    self.ave_cold = copy.deepcopy(rs)
-                    
+                    self.next.durationSec = 0.
+                    # ncold is updated by aveerage_spec()
                 self.ave_cold, ncold, firstutc, lastutc = \
                     self.average_spec( self.ave_cold, rs, ncold, firstutc, lastutc)
 
@@ -656,6 +656,23 @@ class Plot(object):
             
         if self.verbose:
             print( "Found %3d High Galactic Latitude spectra" % (ncold))
+
+        # if keeping hot and cold files
+        if self.doKeep and self.coldFileName == "":
+            outname = radioastronomy.utcToName( self.ave_cold.utc)
+            outname = outname + ".cld"  # output in counts            
+            # add telescope index
+            outname = ("T%d-" % cpuIndex)+outname
+            n = self.ave_cold.nChan
+            print("Ave Cold: %d: %.6f" % \
+                  (n, np.median( self.ave_hot.ydataA[int(n/3):int(2*n/3)])))
+            # multiply by number of spectra averaged to yield a plot
+            # with sufficient numerical resolution.
+            # the nave factor is removed on read
+            self.ave_cold.ydataA = self.ave_cold.ydataA*self.ave_cold.nave
+            self.ave_cold.write_ascii_file(self.outputDir, outname)
+            print( "Wrote Average Cold Load File: %s%s" % ("../", outname))
+
         return ncold
 
     def computeGain( self):
@@ -1006,14 +1023,74 @@ class Plot(object):
             if self.flagRfi:   # RFI is always flagged in topocentric frequencies
                 # interpolate rfi
                 yv = interpolate.lines( self.linelist, self.linewidth, xv, yv) 
-
+                
+            # finally correct for the system gain
+            yv = yv * self.gain
+            tsky = yv
+            
             if not self.plotFrequency:   # if plotting velocity
+
                 self.vel = np.zeros(nData)
                 for jjj in range (0, nData):
                     self.vel[jjj] = self.c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
                 self.xa, self.xb = gf.velocity_to_indicies( self.vel, \
                                                             self.minvel, self.maxvel)
-                xv = self.vel
+                # compute velocity correction for this direction and date
+                corr = gf.compute_vbarycenter( ave_spec)
+                # make the topcentric velocity correction
+                self.vel = self.vel + corr
+                            
+                iVmin, iVmax = gf.velocity_to_indicies( self.vel, self.minSvel, self.maxSvel)
+
+                # compute a baseline fit
+                baseline = gf.fit_baseline( self.vel[0:nData], tsky[0:nData], 
+                                               self.xa, self.xb, 10, self.fitOrder)
+
+                # remove baseline to get the source spectrum
+                tSource = tsky[0:nData] - baseline[0:nData]
+
+                # if plotting/keeping the baseline subtracted spectra, transfer to Sky
+                if self.doBaseline:
+                    tsky = tSource
+
+                # now compute integrated intensity and noise estimates
+                nv = iVmax - iVmin
+                if nv < 0:
+                    print(("Velocity Index Error: %d > %d" % (iVmin, iVMax)))
+                    nv = -nv
+
+                # create sub-arrays of intensity and velocity
+                tSs = tSource[iVmin:iVmax]
+                vSs = velcorr[iVmin:iVmax]
+                tSourcemin = min(tSs)
+                tSourcemax = max(tSs)
+                # get index to maximum value; then get velocity
+                iSourcemax = np.argmax(tSs)
+                velSource = vSs[iSourcemax]
+                # integrate over spectrum for required velocity range
+                tSum = np.sum(tSs)
+                tSumRms = np.std(tSs)
+
+                # computed the integrated velocity
+                tvs = tSs*vSs
+                tVSum = np.sum(tvs)
+                tVSumRms = np.std(tvs)
+
+                # Integration is reported in Kelvin*Km/Sec;
+                # Multiply by source velocity range
+                tSumKmSec = tSum * ( maxSVel - minSVel)/float(nv)
+                dTSumKmSec = tSumRms * dV * np.sqrt(float(nv))
+            else:
+                tSourcemin = 0.
+                tSourcemax = 0.
+                velSource = 0.
+                tVSum = 0.
+                tVSumRms = 0.
+                tSumKmSec = 0.
+                dTSumKmSec = 0.
+                tSum = 0.
+
+            xv = self.vel
             # keep track of x axis for plot sizing
             xmin = min(xv[self.xa:self.xb])
             xmax = max(xv[self.xa:self.xb])
@@ -1027,8 +1104,7 @@ class Plot(object):
                 yv[icenter-1] = (3.*yv[icenter-2] + yv[icenter+2])*.25
                 yv[icenter+1] = (yv[icenter-2] + 3.*yv[icenter+2])*.25
             
-            # finally correct for the system gain
-            yv = yv * self.gain
+
 
             # prepare to report intensity summary
             ymin = min(yv)
@@ -1088,23 +1164,6 @@ class Plot(object):
         plt.legend(loc='upper right')
         # zero the plot count for next execution
         self.nplot = 0 
- 
-        # if writing files
-        if self.doPlotFile:
-            self.firstdate = self.firstdate[2:]
-            if self.fileTag == "":
-                self.fileTag = "R-" + self.firstdate
-            outpng = self.outFileDir + self.fileTag + ".png"
-            plt.savefig(outpng,bbox_inches='tight')
-            outpdf = self.outFileDir + self.fileTag + ".pdf"
-            plt.savefig(outpdf,bbox_inches='tight')
-            print( "Wrote files %s and %s" % (outpng, outpdf))
-        else:
-            # else show the plots
-            plt.show()
-            
-        # zero the plot count for next execution
-        self.nplot = 0 
 
         # if writing files
         if self.doPlotFile:
@@ -1120,6 +1179,7 @@ class Plot(object):
             # else show the plots
             plt.show()
       
+        self.plotFrequency = True  
         # End of ras.tsys()
         return
     
