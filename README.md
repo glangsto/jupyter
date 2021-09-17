@@ -11,9 +11,11 @@ These notebooks assume the observations are taken using Gnuradio software system
 Please see http://www.github.com/WVURAIL/gr-radio_astro for the software to make the observations.
 These notebooks only work with NSF designs found there.
 <p>
-The Jupyter notebooks here are only for analyzing already completed observations.
+The Jupyter notebooks found here are only for analyzing already completed observations.
 <p>
 ### To Do:
 1. Provide utilities to convert from and to Comma separated value files.
-2. Expand the mapping code to spectral line cubes
+2. Provide a utility program to convert spectra taken with _spectrometer_w_cal.grc_ observations (in WVURAIL/gr-radio_astro/examples) to the .ast and .hot format files.
+3. Divide ras.py into smaller units.
+4. Expand the mapping code to spectral line cubes
 
