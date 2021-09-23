@@ -3,6 +3,7 @@
 Class defining a Radio Frequency Spectrum
 Includes reading and writing ascii files
 HISTORY
+21SEP23 GIL Fix python3 version of ephem calculations
 21SEP15 GIL try PyEphem if pyephem is not available
 20DEC28 GIL fix parsing header separately from data
 20DEC16 GIL file header
@@ -55,11 +56,11 @@ except ImportError:
         print('In Linux type:')
         print('       sudo apt-get install python-dev')
         print('       sudo apt-get install python-pip')
-        print('       sudo pip install pyephem')
+        print('       sudo pip install ephem')
         print(' - or - ')
-        print('       sudo pip3 install PyAstronomy')
+        print('       sudo pip3 install ephem')
         print('')
-    ephemOK = False
+        ephemOK = False
 #    exit()
 
 MAXCHAN = 4096
@@ -103,8 +104,8 @@ def utcToName( utc):
     # remove 20 from 2019 dates
     yymmdd = daypart[2:19]
     yymmdd = yymmdd.replace(":", "")
+    # end of utcToName() 
     return yymmdd
-        
 
 def degree2float(instring, hint):
     """
@@ -391,7 +392,8 @@ class Spectrum(object):
         self.epeak = 0.        # event peak
         self.erms = 0.         # event RMS
         self.emjd = 0.         # event Modified Julian Day
-
+        return
+    
     def __str__(self):
         """
         Define a spectrum summary string
@@ -406,13 +408,17 @@ class Spectrum(object):
         rads = np.pi / 180.
         self.epoch = "2000"
         if ephemOK:
-            radec2000 = ephem.Equatorial( rads*self.ra, rads*self.dec, epoch=ephem.J2000)
+            
+            radec2000 = ephem.Equatorial( \
+                            rads*self.ra, rads*self.dec, epoch=ephem.J2000)
         # to convert to dec degrees need to replace on : with d
             gal = ephem.Galactic(radec2000)
             aparts = angles.phmsdms(str(gal.lon))
             self.gallon = angles.sexa2deci(aparts['sign'], *aparts['vals'])
             aparts = angles.phmsdms(str(gal.lat))
             self.gallat = angles.sexa2deci(aparts['sign'], *aparts['vals'])
+        else:
+            print("Can not compute Galactic Coordinates without Ephemerus")
 
     def datetime(self):
         """
@@ -463,8 +469,8 @@ class Spectrum(object):
             self.dec = angles.sexa2deci(aparts['sign'], *aparts['vals'])
         self.epoch = "2000"
         # now update galactic coordinates
+        self.radec2gal()
         if ephemOK:
-            self.radec2gal()
             sun = ephem.Sun(location)
             aparts = angles.phmsdms(str(sun.az))
             self.az_sun = angles.sexa2deci(aparts['sign'], *aparts['vals'])

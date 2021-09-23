@@ -1,5 +1,6 @@
 #Python class to plot raw NSF spectra.
 #HISTORY
+#21Sep23 GIL finish implementing selecting a narrow range of the galactic plan
 #21Sep16 GIL implement averaging in raw() start on tsys()
 #21Sep15 GIL updates for python 3 and add arguements for tsys plotting
 #21Jun07 GIL rr -> ras, complete class
@@ -30,7 +31,6 @@ class Plot(object):
         self.flagRfi = False
         self.firstdate = ""
         self.lastdate = ""
-        self.nave = 0
         self.minGlat = 0.
         self.maxGlat = 0.
         self.minel = 0.
@@ -44,7 +44,7 @@ class Plot(object):
         return
 
 #   some SDRs put spike in center of spectrum; indicate spike flagging here
-    def __init__( self, verbose=False,  
+    def __init__( self, doDebug=False,  
                   flagCenter = False, 
                   doSave = False, 
                   flagRfi = True, 
@@ -58,9 +58,9 @@ class Plot(object):
                   telIndex = 0,
                   doBaseline = False,
                   writeTsys = False,
-                  writeKelvin = False,
+                  writeKelvin = False
                   ):
-        self.verbose = verbose          # print extra messages
+        self.verbose = doDebug          # print extra messages
         self.flagCenter = flagCenter    # if flag spike in center of spectrum,
         self.doSave = doSave            # if saving intermediate/average files
         self.flagRfi = flagRfi          # flag flagging RFI
@@ -122,7 +122,9 @@ class Plot(object):
         # initialize of range for search
         self.setdefaults()
         self.lowel = 30.
-        self.lowGlat = 30.
+        self.lowGlat = 40.
+        self.doGalLat = False # select galactic latitude near 0 for plotting
+        self.limitGalLat = 5. # +/- range to average (degrees) 
 
         # create places to store hot and cold files
         self.ave_hot  = radioastronomy.Spectrum()
@@ -138,10 +140,9 @@ class Plot(object):
         self.vel = np.zeros(self.nData)
         self.tRxMiddle = 100. # kelvins, estimated
         self.gainAve = 1.
-        self.tint = 30.
+        self.tint = 30.        # set default average integration time.
         
         # parameters for determining a change of obs
-        self.nave = 0
         self.lastel = 999.
         self.lastaz = 999.
         self.lastgain = 0.
@@ -149,8 +150,7 @@ class Plot(object):
         self.endutc = 0.
         # store new spectra here if a change is found
         self.next = radioastronomy.Spectrum()
-        self.next.tint = 0.   # indicate no data yet
-        
+
         # end of init
         return
 
@@ -170,6 +170,7 @@ class Plot(object):
             print("-BASE  Fit and remove a spectral baseline")
             print("-C optionally flag the center of the band")
             print("-E <sample> Set last sample to plot (default is end of samples)")
+            print("-G <LatRange> Set +/- LatRange acceptable for plotting")
             print("-H optionally set the high velocity region for baseline fit")
             print("-I <integration time> Time (seconds) to average observations before plotting")
             print("-K <dir> optionally keep average hot and cold load calibration observations")
@@ -187,7 +188,7 @@ class Plot(object):
             print("-0 optionally plot zero intensity line(s)")
             print("-MINEL optionally set lowest elevation for calibration obs (default %7.1f)" % (self.lowel))            
             print("")
-            print("Glen Langston - NSF - September 16, 2021")
+            print("Glen Langston - NSF - September 22, 2021")
             return ["",""]
 
         iarg = 0
@@ -234,6 +235,12 @@ class Plot(object):
             elif args[iarg].upper() == '-E':   # if setting ending sample
                 iarg = iarg + 1
                 self.xb = int( args[iarg])
+            elif args[iarg].upper() == '-G':   # if setting ending sample
+                iarg = iarg + 1
+                self.doGalLat = True
+                self.limitGalLat = float( args[iarg])
+                print("Plotting Average signals for Galactic Latitude range +/- %8.1f" \
+                      % (self.limitGalLat))
             elif args[iarg].upper() == '-H':
                 iarg = iarg+1
                 self.maxvel = np.float( args[iarg])
@@ -326,7 +333,7 @@ class Plot(object):
         names = self.help(argstring)
         return names
 
-    def check_obs( self, ave_spec, in_spec):
+    def check_obs( self, ave_spec, nave, in_spec, doDebug=False):
         """
         check_obs() looks for changes in the observing parameters and/or
         integration time exceeded.
@@ -334,44 +341,51 @@ class Plot(object):
         averaged because of the gain/angle/time change.  The last spectrum
         becomes "next"
         Inputs:
-        ave_spec - average spectrum if self.nave > 0
+        ave_spec - average spectrum if nave > 0
         in_spec  - new input spectrum, by comparision a new observations is detected
-        self.nave count > 1       indicates an average had been started.
+        nave count > 1       indicates an average had been started.
         self.next.durationSec > 0 indicates the next spectrum must be processed.
         """
  
+        if doDebug:       # if over-riding debug for this module
+            self.verbose=True
+        
         newobs = False    # start assuming this is a continueed observation.
-        if self.nave <= 0.:    # if no previous observatitions in avevarage
+        if nave < 1:      # if no previous observatitions in avevarage
             # check if an observation change was detected in last round and
             # kept because it was different than the average.
             if self.next.durationSec > 0.:
                 # if the previous file duration was longer than the integration time
                 if self.next.durationSec > self.tint:
                     # just keep the input observation and return previous
-                    ave_spec = self.next
-                    self.next = in_spec
+                    ave_spec = copy.deepcopy(self.next)
+                    self.next = copy.deepcopy(in_spec)
                     self.beginutc = self.next.utc
                     self.endutc =   self.next.utc
                     newobs = True
-                    self.nave = 0
-                    return newobs, ave_spec
+                    nave = 0
+                    return newobs, ave_spec, nave
                 else: # observations are shorter than the averaging time
                     self.beginutc = self.next.utc
                     self.endutc = self.next.utc
-                    ave_spec, self.nave, self.beginutc, self.endutc = \
-                        self.average_spec( ave_spec, self.next, self.nave, \
-                                           self.beginutc, self.endutc)
+                    ave_spec, nave, self.beginutc, self.endutc = \
+                           self.average_spec( ave_spec, nave, self.next, \
+                                              self.beginutc, self.endutc)
                     self.next.durationSec = 0. # don't sum the next spectrum again
             else:  # else check if input spectrum exceeds average time
                 self.beginutc = in_spec.utc
                 self.endutc = in_spec.utc
-                #self.nave is updated by self.average_spec()
+                #nave is updated by self.average_spec()
                 if in_spec.durationSec > self.tint:
                     newobs = True
-                    return newobs, in_spec
+                    nave = 0
+                    self.next.durationSec = 0.
+                    ave_spec = copy.deepcopy(in_spec)
+                    return newobs, ave_spec, nave
                 # else no previous spectra, just save the weighted input spectrum
-                ave_spec, self.nave, self.beginutc, self.endutc = \
-                    self.average_spec( ave_spec, in_spec, self.nave, self.beginutc, self.endutc)
+#                ave_spec, nave, self.beginutc, self.endutc = \
+#                    self.average_spec( ave_spec, nave, in_spec, \
+#                                      self.beginutc, self.endutc)
         # now check if input spectrum is the start of a new spectrum
         
         # check if an elevation change, which requires completing last and keeping new
@@ -386,25 +400,35 @@ class Plot(object):
                           (ave_spec.telaz, in_spec.telaz))
             self.next = in_spec
             ave_spec = self.normalize_spec( ave_spec, self.beginutc, self.endutc)
-            self.nave = 0
-            return newobs, ave_spec
+            nave = 0
+            return newobs, ave_spec, nave
+
+        if in_spec.gains[0] != ave_spec.gains[0] or in_spec.gains[1] != ave_spec.gains[1]:
+            newobs = True
+            if self.verbose:
+                print("Gain Change from: %7.1f to %7.1f (deg)" % \
+                          (ave_spec.gains[0], in_spec.gains[0]))
+            self.next = in_spec
+            ave_spec = self.normalize_spec( ave_spec, self.beginutc, self.endutc)
+            nave = 0
+            return newobs, ave_spec, nave
         
         # if here, then not yet a new observation, integrate input into average                  
-        ave_spec, self.nave, self.beginutc, self.endutc = \
-            self.average_spec( ave_spec, in_spec, self.nave, self.beginutc, self.endutc) 
+        ave_spec, nave, self.beginutc, self.endutc = \
+            self.average_spec( ave_spec, nave, in_spec, self.beginutc, self.endutc) 
         
         # compute the duration from begin and end utcs.
         aveutc, duration = radioastronomy.aveutcs( self.beginutc, self.endutc)
         # if duration exceeded, then flag this is end of last observation
         if duration > self.tint:
             ave_spec = self.normalize_spec( ave_spec, self.beginutc, self.endutc)
-            self.nave = 0
+            nave = 0
             newobs = True
                           
         # end of check_obs()
-        return newobs, ave_spec
+        return newobs, ave_spec, nave
         
-    def average_spec( self, ave_spec, in_spec, nave, firstutc, lastutc):
+    def average_spec( self, ave_spec, nave, in_spec, firstutc, lastutc):
         """
         Averages spectra/weight functions by observing duration
         input/output
@@ -470,9 +494,11 @@ class Plot(object):
         # compute average time from first and last utcs
         aveutc, duration = radioastronomy.aveutcs( firstutc, lastutc)
         ave_spec.utc = aveutc
+        if self.verbose:
+            print("(%s+%s)/2 = %s" % (firstutc,lastutc, aveutc))
         #need to re-calculate representative RA,Dec for average time
         ave_spec.azel2radec()
-
+        
         # end of normalize_spec()
         return ave_spec
 
@@ -504,7 +530,6 @@ class Plot(object):
             return
         
         nhot = 0;  # now restart the average, in case some files are not OK
-        self.nave = 0;  # make sure not files remain from last average
         self.next.durationSec = 0.
         
         # now run through and find hot and cold loads obs        
@@ -522,13 +547,12 @@ class Plot(object):
             # if a hot load observation
             if rs.telel < 0:
                 if nhot == 0:
-
                     self.firstutc = rs.utc
                     self.lastutc = rs.utc
                     # nhot will be updated by average_spec()
                 # accumulate spectra, nhot is updated also
                 self.ave_hot, nhot, self.firstutc, self.lastutc = \
-                    self.average_spec( self.ave_hot, rs, nhot, self.firstutc, self.lastutc)
+                    self.average_spec( self.ave_hot, nhot, rs, self.firstutc, self.lastutc)
         if nhot > 0:
             print(( "Found %3d Hot load observations" % (nhot)))
             self.ave_hot = self.normalize_spec( self.ave_hot, self.firstutc, self.lastutc)
@@ -667,7 +691,6 @@ class Plot(object):
             if Glat > lowGlat:
                 # if first acceptable cold file, then init values
                 if ncold == 0:
-                    self.nave = 0
                     self.firstutc = rs.utc
                     self.lastutc = rs.utc
                     # initial values for min/max searches
@@ -676,7 +699,7 @@ class Plot(object):
                     self.next.durationSec = 0.
                     # ncold is updated by aveerage_spec()
                 self.ave_cold, ncold, self.firstutc, lastutc = \
-                    self.average_spec( self.ave_cold, rs, ncold, self.firstutc, self.lastutc)
+                    self.average_spec( self.ave_cold, ncold, rs, self.firstutc, self.lastutc)
                 if rs.telel < self.minel:
                     self.minel = rs.telel
                 elif rs.telel > self.maxel:
@@ -687,7 +710,8 @@ class Plot(object):
             print( "No high Galactic Latitude data")
             return 0
         else:
-            self.ave_cold = self.normalize_spec( self.ave_cold, self.firstutc, self.lastutc)
+            self.ave_cold = self.normalize_spec( self.ave_cold, \
+                                                self.firstutc, self.lastutc)
 
         if self.flagRfi:
             cv = self.ave_cold.ydataA
@@ -747,7 +771,6 @@ class Plot(object):
         n49 = int(4*n9)
         n59 = int(5*n9)
         n69 = int(6*n9)
-
 
         self.vel = np.zeros(nData)
         xv = self.ave_cold.xdata * 1.E-6 # convert to MHz
@@ -829,7 +852,6 @@ class Plot(object):
         ave_spec.tSys = tSys
         ave_spec.tRx = self.tRxMiddle
         ave_spec.tRms = tStd
-        ave_spec.tint = ave_spec.durationSec
         ave_spec.bunit = 'Kelvins'
         ave_spec.KperC = self.gainAve
 
@@ -864,7 +886,7 @@ class Plot(object):
         if count < 1:
             print("No RAS files, can not calibrate")
             return
-        
+        nave = 0  # count cold spectra averaged
         count = 0 # restart the counting
         # look at all the files, but will stop after max plots
         for filename in files:
@@ -877,7 +899,7 @@ class Plot(object):
             rs.read_spec_ast( filename)
             if count == 0:
                 ave_spec = rs
-                self.nave = 0
+                nave = 0
             count = count + 1
             
             # now compute strings for plotting
@@ -885,11 +907,12 @@ class Plot(object):
             time, date, self.firstdate, self.lastdate = \
                 rasnames.parsetime( utcstr, self.firstdate, self.lastdate)
 
-            newobs, ave_spec = self.check_obs( ave_spec, rs)
+            newobs, ave_spec, nave = self.check_obs( ave_spec, nave, rs)
             # wait until a new obs to plot
             if not newobs:
                 continue
                 
+            # if here, then a new observation average is complete, prepare to plot
             xv = ave_spec.xdata  * 1.E-6 # convert to MHz
             # deal with spectra with different numbers of channels.
             nData = len( xv)
@@ -969,7 +992,7 @@ class Plot(object):
             self.nplot = self.nplot + 1
         # end for all names
         # clean up averaging parameters
-        self.nave = 0
+        nave = 0
         self.next.durationSec = 0.
         
         if (self.maxPlot < 1) or (self.nplot < 1):
@@ -1054,25 +1077,25 @@ class Plot(object):
         dTSumKmSec = tSumRms * dV * np.sqrt(float(nv))
         if self.verbose:
             print("T-V Sum :  %10.3f +/- %7.3f" % (tSumKmSec, dTSumKmSec))
-            print("Velocity:  %10.3f +/- %7.3f" % (tSVsum, tVSumRms))
+            print("Velocity:  %10.3f +/- %7.3f" % (tVSum, tVSumRms))
             
         # end of Tintegrate()
         return tSumKmSec, dTSumKmSec, tVSum, tVSumRms
                
-    def tsys(self, names):
+    def tsys(self, names, doDebug=False):
         ###
         # Plot Tsys calibrated spectra
         ###
         astnames, nast = rasnames.splitNames(names,".ast", "", doDebug=self.verbose)
         hotnames, nhot = rasnames.splitNames(names,".hot", "", doDebug=self.verbose)
 
-        print("Reading Hot Load observations")
+        self.verbose = doDebug    # override debug
         nhot = self.read_hot( hotnames)
         if nhot < 1:
             print("No Hot load Observations, can not calibrate")
- 
-        print("Reading Cold Sky observations")
+
         ncold = self.read_cold( astnames, self.lowel, self.lowGlat)
+        # If no cold load above input minum, then retry with wider allowed angles
         if ncold < 1:
             self.lowel = 1.
             self.lowGlat = self.maxGlat - 5.
@@ -1081,10 +1104,11 @@ class Plot(object):
                   (self.minel, self.maxel, self.minGlat, self.maxGlat))
 
             if ncold < 1:
-                print("No Cold load files above minimum eleation %8.1f deg" % (self.lowel))
+                print("No Cold load files above minimum eleation %8.1f deg" % \
+                      (self.lowel))
                 return
-            else:
-                print("Found %d Cold Sky Observations" % (ncold))
+        print("Found %d Cold Sky Obs.; Min El = %7.1f, Low Gal Lat: %7.1f" % \
+              (ncold, self.minel, self.lowGlat))
             
         # now, based on hot and cold loads, compute gains for remaining spectra
         self.computeGain()
@@ -1112,6 +1136,7 @@ class Plot(object):
         rs = radioastronomy.Spectrum()
         
         count = 0
+        newobs = False
         # plot no more than N spectra
         for filename in astnames:
             # a file name must have a 3 letter extension (ie .hot, .ast)
@@ -1124,7 +1149,7 @@ class Plot(object):
             # need to initialize the ave spectrum similar to read spectrum
             if count == 0:
                 ave_spec = rs
-                self.nave = 0
+                nave = 0
             count = count + 1
             
             # now compute strings for plotting
@@ -1133,11 +1158,44 @@ class Plot(object):
             time, date, self.firstdate, self.lastdate = \
                 rasnames.parsetime( utcstr, self.firstdate, self.lastdate)
 
-            newobs, ave_spec = self.check_obs( ave_spec, rs)
-            # wait until a new obs to plot
+            # if only ploting low galactic latitudes
+            if self.doGalLat:
+                rs.azel2radec()
+                # check if the latitude is in range, else skip this one.
+                if rs.gallat < - self.limitGalLat or rs.gallat > self.limitGalLat:
+                    if nave > 0:  # This latitude out of range, average any already found
+                        ave_spec = self.normalize_spec( ave_spec, \
+                                                        self.beginutc, self.endutc)
+                        self.next.durationSec = 0.
+                        if self.verbose: 
+                            print("Average complete: Gal. latitude: %7.1f inside range +/- %7.1f (%d)" % \
+                                  (ave_spec.gallat, self.limitGalLat, nave))
+                        nave = 0
+                        if ave_spec.gallat > - self.limitGalLat and ave_spec.gallat < self.limitGalLat:
+                            newobs = True
+                        else:
+                            newobs = False
+                    else: # out of range and no data being averaged
+                        newobs = False
+                        self.next.durationSec = 0.
+                        nave = 0
+                else:  # galactic latitude is in range
+                    self.next.azel2radec()
+                    newobs, ave_spec, nave = self.check_obs( ave_spec, nave, rs)
+                    if ave_spec.gallat < - self.limitGalLat or ave_spec.gallat > self.limitGalLat:
+                        newobs = False
+                    if self.verbose or newobs:
+                        print("Gal. lat: %7.1f inside range +/- %7.1f (%d)" % \
+                            (ave_spec.gallat, self.limitGalLat, nave))
+                    self.next.durationSec = 0.
+            else: # else not selecting only low latitude observations
+                newobs, ave_spec, nave = self.check_obs( ave_spec, nave, rs)
+                
+            # wait until a new obs to plot    
             if not newobs:
                 continue
-                
+            nave = 0  # previous averaging is done, after plot, start new average
+            
             xv = ave_spec.xdata  * 1.E-6 # convert to MHz
             # deal with spectra with different numbers of channels.
             nData = len( xv)
@@ -1258,7 +1316,7 @@ class Plot(object):
             
         # end for all names
         # clean up averaging parameters
-        self.nave = 0
+        nave = 0
         self.next.durationSec = 0.
         
         if (self.maxPlot < 1) or (self.nplot < 1):
@@ -1268,6 +1326,9 @@ class Plot(object):
     
         if self.myTitle == "":
             self.myTitle = note
+
+        if self.doGalLat:
+                rs.azel2radec()
   
         # scale min and max intensities for nice plotting
         dy = yallmax - yallmin
