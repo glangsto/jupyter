@@ -28,6 +28,7 @@ def splitNames( names, typea=".ast", typeb=".hot", doDebug=False):
     nnames = len(names)
     count = 0
     tempnames = []
+    
     #must join a wildcard match
     stara = "*"+typea
     starb = "*"+typeb
@@ -35,8 +36,27 @@ def splitNames( names, typea=".ast", typeb=".hot", doDebug=False):
         print("Type A: '%s',  Type B: '%s'" % ( typea, typeb))
 
     for aname in names:
-        
-        if os.path.isdir(aname):  # if a directory name
+    
+        # if the input name contains a wild card
+        nameparts = aname.split('*')
+        if len(nameparts) > 1:
+            if doDebug:
+                print("Name has a wild card: %s" % (aname))
+            print(nameparts)
+            cdir = nameparts[0]
+            typec = nameparts[1]
+            starc = "*"+typec
+            print("Directory: %s and matching %s" % (cdir, starc))
+            newnames = list(glob.glob(os.path.join(cdir,starc)))    
+            if doDebug:
+                print(newnames)
+            if count == 0:
+                tempnames = newnames
+            else:
+                for anothername in newnames:
+                    tempnames.append(anothername)
+            count = count + len(newnames)
+        elif os.path.isdir(aname):  # if a directory name
             newnames = list(glob.glob(os.path.join(aname,stara)))
             if doDebug:
                 print(newnames)
@@ -54,6 +74,7 @@ def splitNames( names, typea=".ast", typeb=".hot", doDebug=False):
                     for anothername in newnames:
                         tempnames.append(anothername)
                 count = count + len(newnames)
+                
         else:  # else this is just a file name
             if typea in aname:
                 tempnames.append(aname)
