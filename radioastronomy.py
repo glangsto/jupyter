@@ -3,8 +3,12 @@
 Class defining a Radio Frequency Spectrum
 Includes reading and writing ascii files
 HISTORY
+21Oct02 GIL merge in writing of Velocities
 21SEP23 GIL Fix python3 version of ephem calculations
 21SEP15 GIL try PyEphem if pyephem is not available
+21JUN28 GIL prepare to write spectra with velocities 
+21JUN10 GIL fix writing different FFT sizes
+21APR09 GIL add telescope altitude read/write
 20DEC28 GIL fix parsing header separately from data
 20DEC16 GIL file header
 20NOV27 GIL separate the reading of the file header from the data
@@ -41,11 +45,15 @@ import os.path
 import datetime
 import copy
 import numpy as np
-import angles
-
-# assume ephem can not be loaded, then try
+# angles is a local file
+try:
+    import angles
+except:
+    # if angles not found, try local file
+    from . import angles
+    
+# assume ephem can be loaded, then try
 ephemOK = True
-
 try:
     import ephem
 except ImportError:
@@ -350,6 +358,7 @@ class Spectrum(object):
         self.telelev = 0.  # geographic elevation above sea-level (meteres)
         self.centerFreqHz = 1.0   # centerfrequency of the observation (Hz)
         self.bandwidthHz = 1.0   # sampleRate of the observation (Hz)
+        self.refFreqHz = 1420405751.768 # (2) Hz
         self.deltaFreq = 1.0   # frequency interval between channels
         self.utc = utc   # average observation time (datetime class)
         self.lst = 0.    # local sideral time degrees, ie 12h = 180deg
@@ -367,8 +376,8 @@ class Spectrum(object):
         self.tRms = 2.              # Uncertainty in Sys measurement
         self.tint = 1.              # Average time for tRms+tSys measurement
         self.KperC = 100.           # Kelvins per Count
-        self.gainFactor = 1.        # Gain Factor to normalize relative to other horns
-        self.version = str("3.0.1")
+        self.gainFactor = 1.        # Gain Factor to normalize to other horns
+        self.version = str("5.0.1") # merged python notebook version
         self.polA = str("X")        # polariation of A ydata: X, Y, R, L,
         self.polB = str("Y")        # polariation of B ydata: X, Y, R, L,
         self.polAngle = float(0.0)  # orientation of polariation of A
@@ -476,15 +485,23 @@ class Spectrum(object):
             self.az_sun = angles.sexa2deci(aparts['sign'], *aparts['vals'])
             aparts = angles.phmsdms(str(sun.alt))
             self.altsun = angles.sexa2deci(aparts['sign'], *aparts['vals'])
+        #end of azel2radec()
+        return
 
 ##################################################
-#
-    def write_ascii_file(self, dirname, outname):
+    def write_ascii_file(self, dirname, outname, doFreq = True, \
+                         doHeader = True, doComputeX = False):
         """
         Write ascii file containing astronomy data
+        Inputs:  
+        dirname    Directory where spectra/event will be written
+        outname    Name of file to write
+        doFreq     Flag writting frequency or velocity
+        doHeader   Flag writting data header, or only intenisities
+        doComputeX Flag recomputing X axis ( needed for velocities)
         """
+
     # need the current time to update coordiantes
-        now = self.utc
         if self.writecount > 0:
             print("File %4d: %s (%d)" % (self.writecount, outname, self.count))
         fullname = dirname + outname
@@ -554,6 +571,8 @@ class Spectrum(object):
         # match SETI/GUPPI KEYWORDS
         # https://www.cv.nrao.edu/~pdemores/GUPPI_Raw_Data_Format/
 #        outline = '# CenterFreq= ' + str(self.centerFreqHz) + '\n'
+        outline = '# REFFREQ   = ' + str(self.refFreqHz) + '\n'
+        outfile.write(outline)
         outline = '# OBSFREQ   = ' + str(self.centerFreqHz) + '\n'
         outfile.write(outline)
 #        outline = '# Bandwidth = '  + str(self.bandwidthHz) + '\n'
@@ -603,7 +622,7 @@ class Spectrum(object):
         outfile.write(outline)
         outline = '# Fft_rate  = '  + str(self.fft_rate) + '\n'
         outfile.write(outline)
-        strnow = now.isoformat()
+        strnow = self.utc.isoformat()
         dates = strnow.split('T')
         datestr = dates[0] + ' ' + dates[1]
         outline = '# UTC       = '  + datestr + '\n'
@@ -622,6 +641,8 @@ class Spectrum(object):
         outfile.write(outline)
         anglestr = angles.fmt_angle(float(self.tellat), s1=":", s2=":")
         outline = '# TELLAT    = '  + anglestr + '\n'
+        outfile.write(outline)
+        outline = '# TELALT    = '  + str(self.telelev) + '\n'
         outfile.write(outline)
         rastr = angles.fmt_angle(self.ra/15., s1=":", s2=":", pre=3) # convert to hours
         outline = '# RA        = '  + rastr[1:] + '\n'
@@ -651,7 +672,7 @@ class Spectrum(object):
         outfile.write(outline)
         outline = '# TELSIZEBM = '  + str(self.telSizeBm) + '\n'
         outfile.write(outline)
-        outline = '# AST_VERS  = '  + str("05.01") + '\n'
+        outline = '# AST_VERS  = '  + str(self.version) + '\n'
         outfile.write(outline)
 
         if self.nTime > 0:            # if an event
@@ -659,9 +680,24 @@ class Spectrum(object):
             
         # if a spectrum in this data stream
         if self.nSpec > 0:
-            dx = self.bandwidthHz/float(self.nChan)
-            x = self.centerFreqHz - (self.bandwidthHz/2.) + (dx/2.)
             leny = len(self.ydataA)
+            leny = min(self.nChan, leny)
+            
+            if doComputeX: # if recomputing x values
+                self.xdata = np.zeros(leny)
+                dx = self.bandwidthHz/float(self.nChan)
+                x = self.centerFreqHz - (dx * self.refChan)
+
+                # if not computing frequencies then computing velocities
+                if not doFreq:
+                    # else computing velocities                    
+                    dx = - dx * clight / self.refFreqHz   # doppler shift definition
+                    x = self.refFreqHz - x # high freq, going to us -> - Vel. 
+                    x = x * clight / self.refFreqHz
+                # now do the calculation
+                for i in range(leny):
+                    self.xdata[i] = x
+                    x = x + dx
             if self.nSpec > 1:
                 pformat = "%04d %s %.4f %.4f\n"
                 for i in range(min(self.nChan, leny)):
@@ -671,7 +707,6 @@ class Spectrum(object):
             else:
                 pformat = "%04d %s %.4f\n"
                 for i in range(min(self.nChan, leny)):
-#                    outline = str(i).zfill(4) + ' ' + str(long(x)) + ' ' + str(self.ydataA[i]) + '\n'
                     outline = pformat % (i, str(int(x)), self.ydataA[i])
                     outline = outline.replace('  ', ' ')
                     outfile.write(outline)
@@ -685,7 +720,6 @@ class Spectrum(object):
             if leny > self.nSamples:
                 self.nSamples = leny
                 print("Y array length and N Sample miss match:", leny, self.nSamples)
-                print("Y array length and N Sample miss match:", leny, self.nSamples)
             if TIMEPARTS == 2:             # if not writing time
                 outline = "#   I       Q\n"
                 outfile.write(outline)
@@ -694,7 +728,9 @@ class Spectrum(object):
                     print("Very small number of samples: ",self.nSamples)
                     print("N Chan: %5d; N  x: %5d " % (self.nChan, len(self.xdata)))
                     print("N y1  : %5d; N y2: %5d " % (len(self.ydataA), len(self.ydataB)))
-                for i in range(self.nSamples):
+                # avoid crash due to header mixup
+                n = min( len(self.ydataA), self.nSamples)
+                for i in range(n):
                     outline = pformat % (self.ydataA[i], self.ydataB[i])
                     outline = outline.replace(' 0.', ' .')
                     outline = outline.replace('-0.', '-.')
@@ -735,8 +771,7 @@ class Spectrum(object):
         Write ascii average file containing astronomy data
         File name is based on time of observation
         """
-        now = self.utc
-        yymmdd = utcToName( now)
+        yymmdd = utcToName( self.utc)
         yymmdd = yymmdd + "-ave"  # distiguish averages from observations
         # distinguish hot load and regular observations
         extension = '.ast'
@@ -794,6 +829,8 @@ class Spectrum(object):
                 # SETI/GUPPI Keywords
                 if parts[1] == 'OBSFREQ':
                     self.centerFreqHz = float(parts[3])
+                if parts[1] == 'REFFREQ':
+                    self.refFreqHz = float(parts[3])
                 # SETI/GUPPI Keywords
                 if parts[1] == 'OBSBW':
                     self.bandwidthHz = float(parts[3])
@@ -963,6 +1000,10 @@ class Spectrum(object):
                     self.tellat = angles.str2deci( parts[3]) 
                     if verbose:
                         print("TELLAT: %s %7.3f" % (parts[3], self.tellat))
+                if parts[1] == 'TELALT':
+                    self.telelev = float( parts[3]) 
+                    if verbose:
+                        print("TELALT: %s %7.3f" % (parts[3], self.telelev))
 # parse ra, dec into float
                 if parts[1] == 'RA':
                     aparts = angles.phmsdms(parts[3])

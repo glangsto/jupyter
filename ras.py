@@ -587,7 +587,7 @@ class Plot(object):
             outname = radioastronomy.utcToName( self.ave_hot.utc)
             outname = outname + ".hot"  # output in counts
             # add telescope index
-            outname = ("T%d-" % cpuIndex)+outname
+            outname = ("T%d-" % self.telIndex)+outname
             n = self.ave_hot.nChan
             print("Ave Hot: %d: %.6f" % \
                   (n, np.median( self.ave_hot.ydataA[int(n/3):int(2*n/3)])))
@@ -745,7 +745,7 @@ class Plot(object):
             outname = radioastronomy.utcToName( self.ave_cold.utc)
             outname = outname + ".cld"  # output in counts            
             # add telescope index
-            outname = ("T%d-" % cpuIndex)+outname
+            outname = ("T%d-" % self.telIndex)+outname
             n = self.ave_cold.nChan
             print("Ave Cold: %d: %.6f" % \
                   (n, np.median( self.ave_hot.ydataA[int(n/3):int(2*n/3)])))
