@@ -45,9 +45,9 @@ def toCsv( names, doDebug=False):
         outparts = aname.split(".")
         # replace the extension
         if len(outparts) > 1:
-            outname = outparts[0] + ".ast"
+            outname = outparts[0] + ".csv"
         else:
-            outname = outparts + ".ast"
+            outname = outparts + ".csv"
             print("Unusual input file name: %s" % (aname))
             print("Outname: %s" % (outname))
         fout = open(outname, "w")
@@ -58,7 +58,7 @@ def toCsv( names, doDebug=False):
             outnames.append(outname)
             
         outcount = outcount + 1
-# now parse the lines one at a time and produce aN AST version file
+# now parse the lines one at a time and produce a CSV version file
         for aline in inlines:
             # get rid of extra whitespace
             aline = aline.strip()
@@ -73,10 +73,12 @@ def toCsv( names, doDebug=False):
                     keyword = keyword.strip()
                     value = lineparts[1]
                     value = value.strip()
-                    outline = "#%-8s= %s" % (keyword, value)
+                    outline = "#,%-8s, %s" % (keyword, value)
                     # if a # in the line text
                     if len(lineparts) > 2:
-                        outline = outline + " # " + lineparts[2]
+                        outline = outline + "=" + lineparts[2]
+                        if len(lineparts) > 3:
+                            outline = outline + "=" + lineparts[3]                            
                 else:
                     outline = "#, " + aline
             else:  # else no beginning #, must be data
@@ -86,9 +88,9 @@ def toCsv( names, doDebug=False):
                     print("Unusual line with only one value: %s" % (aline))
                     outline = aline
                 else:
-                    outline = lineparts[0] 
+                    outline = lineparts[0]
                     for iii in range(nline-1):
-                        outline = outline + " " + lineparts[iii+1]
+                        outline = outline + ",  " + lineparts[iii+1]
                 # end else data
 
             outline = outline + "\n"
@@ -150,28 +152,32 @@ def toAst( names, doDebug=False):
             outnames.append(outname)
             
         outcount = outcount + 1
-# now parse the lines one at a time and produce a CSV version file
+# now parse the lines one at a time and produce a AST version file
         for aline in inlines:
             aline = aline.strip()
             # if this a keyword or comment
             if aline[0] == "#":
                 # remove the first character
                 aline = aline[1:]
-                lineparts = aline.split("=")
+                aline = aline.strip()
+                if aline[0] == ',':
+                    aline = aline[1:]
+                    aline = aline.strip()
+                lineparts = aline.split(",")
                 # if a keyword = value line
                 if len(lineparts) > 1:
                     keyword = lineparts[0]
                     keyword = keyword.strip()
                     value = lineparts[1]
                     value = value.strip()
-                    outline = "#, %s, %s" % (keyword, value)
+                    outline = "# %-8s= %s" % (keyword, value)
                     # if a # in the line text
                     if len(lineparts) > 2:
                         outline = outline + " # " + lineparts[2]
                 else:
-                    outline = "#, " + aline
+                    outline = "# " + aline.strip()
             else:  # else no beginning #, must be data
-                lineparts = aline.split(" ")
+                lineparts = aline.split(",")
                 nline = len(lineparts)
                 if nline < 2:
                     print("Unusual line with only one value: %s" % (aline))
@@ -179,7 +185,7 @@ def toAst( names, doDebug=False):
                 else:
                     outline = lineparts[0] 
                     for iii in range(nline-1):
-                        outline = outline + ", " + lineparts[iii+1]
+                        outline = outline + " " + lineparts[iii+1]
                 # end else data
 
             outline = outline + "\n"
@@ -187,4 +193,5 @@ def toAst( names, doDebug=False):
             # end for all lines 
         fout.close()
     # end for all files
+    # end of toAst()
     return outnames, outcount
