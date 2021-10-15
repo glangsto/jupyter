@@ -145,13 +145,8 @@ def toAst( names, doDebug=False):
             print("Unusual input file name: %s" % (aname))
             print("Outname: %s" % (outname))
         fout = open(outname, "w")
+        elevation = 90.  # assume a .ast file, may discover this is a .hot file
         # now prepare to return the new names
-        if outcount == 0:
-            outnames = [outname]
-        else:
-            outnames.append(outname)
-            
-        outcount = outcount + 1
 # now parse the lines one at a time and produce a AST version file
         for aline in inlines:
             aline = aline.strip()
@@ -170,7 +165,9 @@ def toAst( names, doDebug=False):
                     keyword = keyword.strip()
                     value = lineparts[1]
                     value = value.strip()
-                    outline = "# %-8s= %s" % (keyword, value)
+                    if keyword == "EL":
+                        elevation = float(value)
+                    outline = "# %-10s= %s" % (keyword, value)
                     # if a # in the line text
                     if len(lineparts) > 2:
                         outline = outline + " # " + lineparts[2]
@@ -183,15 +180,31 @@ def toAst( names, doDebug=False):
                     print("Unusual line with only one value: %s" % (aline))
                     outline = aline
                 else:
-                    outline = lineparts[0] 
+                    outline = lineparts[0].strip()
                     for iii in range(nline-1):
-                        outline = outline + " " + lineparts[iii+1]
+                        outline = outline + " " + lineparts[iii+1].strip()
                 # end else data
 
             outline = outline + "\n"
             fout.write(outline)
             # end for all lines 
         fout.close()
+        
+        # if a hot observation, must move from .ast to .hot
+        if elevation < 0.:
+            hotname = outparts[0] + ".hot"
+            os.rename(outname, hotname)
+            # prepare to report the hotfile name
+            outname = hotname
+        # if starting a list of files, then init else append the name to list        
+        if outcount == 0:
+            outnames = [outname]
+        else:
+            outnames.append(outname)
+            
+        outcount = outcount + 1
+
+
     # end for all files
     # end of toAst()
     return outnames, outcount
