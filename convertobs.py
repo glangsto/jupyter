@@ -80,7 +80,7 @@ def toCsv( names, doDebug=False):
                         if len(lineparts) > 3:
                             outline = outline + "=" + lineparts[3]                            
                 else:
-                    outline = "#, " + aline
+                    outline = "#,        , " + aline.strip()
             else:  # else no beginning #, must be data
                 lineparts = aline.split(" ")
                 nline = len(lineparts)
@@ -155,6 +155,7 @@ def toAst( names, doDebug=False):
                 # remove the first character
                 aline = aline[1:]
                 aline = aline.strip()
+                # now if a leading comma, remove it.
                 if aline[0] == ',':
                     aline = aline[1:]
                     aline = aline.strip()
@@ -167,7 +168,11 @@ def toAst( names, doDebug=False):
                     value = value.strip()
                     if keyword == "EL":
                         elevation = float(value)
-                    outline = "# %-10s= %s" % (keyword, value)
+                    # if no keyword, then just a comment
+                    if keyword == "":
+                        outline = "# %s" % (value)
+                    else:  # else there is a keyword
+                        outline = "# %-10s= %s" % (keyword, value)   
                     # if a # in the line text
                     if len(lineparts) > 2:
                         outline = outline + " # " + lineparts[2]
