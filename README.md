@@ -15,7 +15,7 @@ These notebooks only work with NSF designs found there.
 The Jupyter notebooks here work with the provided data.  You can edit these notebooks to work with your own observations.
 We intend to have a notebook for each of our "Lessons".   Here are the first lessons
  
-1. Chart the Shape of the Milky Way:  <b>https://github.com/glangsto/jupyter/blob/master/MilkyWat1Intensity.ipynb</b>.
+1. Chart the Shape of the Milky Way:  <b>https://github.com/glangsto/jupyter/blob/master/MilkyWay1Intensity.ipynb</b>.
 2. Hydrogen, its everywhere!:  A days observations: <b>https://github.com/glangsto/jupyter/blob/master/MilkyWayPlotting.ipynb</b>.
 <p>
 <p>
