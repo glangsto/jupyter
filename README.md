@@ -20,15 +20,14 @@ The Jupyter notebooks here work with the provided data.  You can edit these note
 We intend to have a notebook for each of our "Lessons".   Here are the first lessons
 <p><ol>
 <li>Chart the Shape of the Milky Way:  <b>https://github.com/glangsto/jupyter/blob/master/MilkyWay1Intensity.ipynb</b>.
+  This notebook plots a model of the Milky Way spiral arms and makes simple model predictions for the hydrogen intensities.
 <li>Hydrogen, its everywhere!:  A days observations: <b>https://github.com/glangsto/jupyter/blob/master/MilkyWayPlotting.ipynb</b>.
+  This notebook plots some previously collected observations.  This notebook can be modified to plot your own observations.
 </ol>
-<p>
 <p>
   
   
 ### To Do:
 1. Provide utilities to convert from and to Comma separated value files.
-2. Provide a utility program to convert spectra taken with _spectrometer_w_cal.grc_ observations (in WVURAIL/gr-radio_astro/examples) to the .ast and .hot format files.
-3. Divide ras.py into smaller units.
-4. Expand the mapping code to spectral line cubes
+2. Expand the mapping code to spectral line cubes
 
