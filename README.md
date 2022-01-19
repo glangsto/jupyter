@@ -14,13 +14,14 @@ The horn construction is described at www.WVURAIL.org
 These notebooks assume the observations are taken using Gnuradio software systems available on GitHub.
 Please see http://www.github.com/WVURAIL/gr-radio_astro for the software to make the observations.
 These notebooks only work with NSF designs found there.
-### A notebook for each topic
+<p>
+<h3> A notebook for each topic</h3>
 The Jupyter notebooks here work with the provided data.  You can edit these notebooks to work with your own observations.
 We intend to have a notebook for each of our "Lessons".   Here are the first lessons
- 
-1. Chart the Shape of the Milky Way:  <b>https://github.com/glangsto/jupyter/blob/master/MilkyWay1Intensity.ipynb</b>.
-2. Hydrogen, its everywhere!:  A days observations: <b>https://github.com/glangsto/jupyter/blob/master/MilkyWayPlotting.ipynb</b>.
-<p>
+<p><ol>
+<li>Chart the Shape of the Milky Way:  <b>https://github.com/glangsto/jupyter/blob/master/MilkyWay1Intensity.ipynb</b>.
+<li>Hydrogen, its everywhere!:  A days observations: <b>https://github.com/glangsto/jupyter/blob/master/MilkyWayPlotting.ipynb</b>.
+</ol>
 <p>
 <p>
   
