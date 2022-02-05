@@ -1,6 +1,6 @@
 # jupyter
-## Jupyter Notebooks for estimating horn telescope poitning offsets.
-### Glen Langston - National Scienc foundation - 2022 February 4
+## Jupyter Notebooks for estimating Horn Telescope Pointing Offsets.
+### Glen Langston - National Scienc foundation - 2022 February 5
 
 Here we provide a sequence of Aficionado/Student/Teacher/Hobbist projects.
 These plotting and computing tools guide you in looking at your own ombservations.
@@ -15,11 +15,11 @@ Everyone's telescope will have some small pointing offset.  To make the best map
 <li>
 First calculate the location of the galactic plane in the sky. 
 <p>
-<b>https://github.com/glangsto/jupyter/blob/master/GalacticPairs.ipynb</b>.
+<b>https://github.com/glangsto/jupyter/blob/master/offsets/GalacticPairs.ipynb</b>.
 <p>
   This notebook plots a model of the Milky Way Galactic Plane crossing coordinates.
 <li>
-<b>https://github.com/glangsto/jupyter/blob/master/GalacticAzElOffset.ipynb</b>
+<b>https://github.com/glangsto/jupyter/blob/master/offsets/GalacticAzElOffset.ipynb</b>
   <p>
   This notebook computes the Sky Coordinates of the Azimuth and Elevation of the pointing
   direction of your telescope.  A pointing error is assumed to show the effect this
