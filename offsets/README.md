@@ -17,6 +17,12 @@ First calculate the location of the galactic plane in the sky.
 <p>
 <b>https://github.com/glangsto/jupyter/blob/master/GalacticPairs.ipynb</b>.
   This notebook plots a model of the Milky Way Galactic Plane crossing coordinates.
+<b>https://github.com/glangsto/jupyter/blob/master/GalacticAzElOffset.ipynb</b>
+  This notebook computes the Sky Coordinates of the Azimuth and Elevation of the pointing
+  direction of your telescope.  A pointing error is assumed to show the effect this
+  has on the direction of your observations.   You can estimate your own pointing offsets.
+  The goal of this notebook is to show how important your location, time and pointing accuracy are
+  in successful observations.
 </ol>
 <p>
   
