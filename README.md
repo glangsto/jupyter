@@ -20,16 +20,30 @@ We intend to have a notebook for each of our "Lessons".   Here are the first les
   Milky Way Model</a>
   This notebook plots a model of the Milky Way spiral arms and makes simple model predictions for the hydrogen intensities.
 <li>Hydrogen, its everywhere!:  A days observations: 
-  <a href=https://github.com/glangsto/jupyter/blob/master/MilkyWayHornDataPlotting.ipynb"> Horn Data Plotting</a>.
+  <a href="https://github.com/glangsto/jupyter/blob/master/MilkyWayHornDataPlotting.ipynb"> Horn Data Plotting</a>.
   This notebook plots some previously collected observations.  This notebook can be modified to plot your own observations.
   Note if you are using <a href="https://colab.research.google.com" >Google Colab</a>, use this notebook instead 
   <a href="https://github.com/glangsto/jupyter/blob/master/MilkyWayHornDataColab.ipynb"> Horn Data (Colab)</a>
 </ol>
 <p>
+Other notebooks are placed in sub-directories to reduce clutter.
+<ol>
+<li>
+Software tools to convert from and to Comma separated value files to .ast and .hot files.
+See <a href="https://github.com/glangsto/jupyter/blob/master/convert"> convert</a> directory
+<li>
+Software tools to compute average calibration spectra.
+See <a href="https://github.com/glangsto/jupyter/blob/master/calibrate"> calibrate</a> directory
+<li>
+Tools to fit gaussians to parts of the spectra, so that arms of the Milky Way can be identified.
+See <a href="https://github.com/glangsto/jupyter/blob/master/convert"> fit</a> directory
+
+</ol>
+<p>
   
   
 ### To Do:
-1. Provide utilities to convert from and to Comma separated value files.
+
 2. Expand the mapping code to spectral line cubes
 
 ### How to build your telescope

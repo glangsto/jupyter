@@ -1,4 +1,4 @@
-#Python class to plot raw NSF spectra.
+#savePython class to plot raw NSF spectra.
 #HISTORY
 #21Sep23 GIL finish implementing selecting a narrow range of the galactic plan
 #21Sep16 GIL implement averaging in raw() start on tsys()
@@ -160,6 +160,8 @@ class Plot(object):
         self.endutc = 0.
         # store new spectra here if a change is found
         self.next = radioastronomy.Spectrum()
+        # prepare to save figures
+        self.fig = None
 
         # end of init
         return
@@ -1028,7 +1030,7 @@ class Plot(object):
             # summarize the minimum and median values
             print('%s %8.3f %8.3f  %8d' % (coordlabel, ymax, ymed, ave_spec.count))
             if self.nplot <= 0 and self.maxPlot > 0:
-                fig,ax1 = plt.subplots(figsize=(12,10))
+                self.fig, ax1 = plt.subplots(figsize=(12,10))
                 # fig.canvas.set_window_title(date)
                 for tick in ax1.xaxis.get_major_ticks():
                     tick.label.set_fontsize(14) 
@@ -1113,6 +1115,17 @@ class Plot(object):
         #end of ras.raw(names)
         return
 
+    def savefig( self, filename):
+        """
+        access the save fig to produce a file copy of the image
+        """
+        if self.fig != None:
+            self.fig.savefig(filename)
+        else: 
+            print("No figure yet created, can not save")
+        # end of savefig()
+        return
+    
     def Tintegrate( self, in_spec, iVmin, iVmax):
         """
         Tintegrate() computes two integrals of spectrum
@@ -1409,7 +1422,7 @@ class Plot(object):
             print('%s %8.2f %8.2f %9.3f %8d' % (coordlabel, \
                     ymax, ymed, xmax, ave_spec.count))
             if self.nplot <= 0 and self.maxPlot > 0:
-                fig,ax1 = plt.subplots(figsize=(12,10))
+                self.fig, ax1 = plt.subplots(figsize=(12,10))
                 # fig.canvas.set_window_title(date)
                 for tick in ax1.xaxis.get_major_ticks():
                     tick.label.set_fontsize(14) 
