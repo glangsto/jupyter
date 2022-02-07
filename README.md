@@ -31,6 +31,9 @@ Model the Shape of the Milky Way:  <a href="https://github.com/glangsto/jupyter/
 </ol>
 <p>
 <br>
+</p>
+  
+<hr>
 <h3> Other notebooks are placed in sub-directories to reduce clutter</h3>
 <ol>
 <li>
@@ -44,7 +47,7 @@ Tools to fit gaussians to parts of the spectra, so that arms of the Milky Way ca
 See <a href="https://github.com/glangsto/jupyter/blob/master/convert"> fit</a> directory
 
 </ol>
-<p>
+<br>
   
 <h3>How to build your telescope</h3>
   
@@ -52,7 +55,7 @@ The horn radio telescopes are student, teacher and hobbiest built radio telescop
 <p>
 The horn construction is described at www.WVURAIL.org
 <p>
-### Python code in this project:
+<h3>Python code in this project</h3>
   <ol>
     <li> ras.py -- Radio Astronomy Plotting Tools
     <li> radioastronomy.py -- Utilities for reading and writing horn radio astronomy data.
