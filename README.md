@@ -12,21 +12,26 @@ These notebooks assume the observations are taken using Gnuradio software system
 Please see http://www.github.com/WVURAIL/gr-radio_astro for the software to make the observations.
 These notebooks only work with NSF designs found there.
 <p>
-<h3> A notebook for each topic</h3>
+<h3> A notebook for each topic</h3> <img src="MilkyWaySpiralArms.png" width=25% align="right">
 The Jupyter notebooks here work with the provided data.  You can edit these notebooks to work with your own observations.
-We intend to have a notebook for each of our "Lessons".   Here are the first lessons
+We intend to have a notebook for each of our "Lessons".   Here are the first lessons:
 <p><ol>
-<li>Model the Shape of the Milky Way:  <a href="https://github.com/glangsto/jupyter/blob/master/MilkyWay1Intensity.ipynb">
+<li>
+Model the Shape of the Milky Way:  <a href="https://github.com/glangsto/jupyter/blob/master/MilkyWayIntensityModel.ipynb">
   Milky Way Model</a>
   This notebook plots a model of the Milky Way spiral arms and makes simple model predictions for the hydrogen intensities.
+  Running this model shows the Earth's location in the Milky Way model.  You can update this model.   The hydrogen intensity model has lots of room for improvement!
+ 
 <li>Hydrogen, its everywhere!:  A days observations: 
-  <a href="https://github.com/glangsto/jupyter/blob/master/MilkyWayHornDataPlotting.ipynb"> Horn Data Plotting</a>.
+  <img src="RealIntensityVsVelocity.png" width=25% alt="Real Horn Radio Telescope Spectra" align="left">
+  <a href="https://github.com/glangsto/jupyter/blob/master/MilkyWayPlotting.ipynb"> Horn Observations Plotting</a>.
   This notebook plots some previously collected observations.  This notebook can be modified to plot your own observations.
   Note if you are using <a href="https://colab.research.google.com" >Google Colab</a>, use this notebook instead 
-  <a href="https://github.com/glangsto/jupyter/blob/master/MilkyWayHornDataColab.ipynb"> Horn Data (Colab)</a>
+  <a href="https://github.com/glangsto/jupyter/blob/master/MilkyWayPlottingColab.ipynb"> Horn Data (Colab)</a>
 </ol>
 <p>
-Other notebooks are placed in sub-directories to reduce clutter.
+<br>
+<h3> Other notebooks are placed in sub-directories to reduce clutter</h3>
 <ol>
 <li>
 Software tools to convert from and to Comma separated value files to .ast and .hot files.
@@ -41,14 +46,19 @@ See <a href="https://github.com/glangsto/jupyter/blob/master/convert"> fit</a> d
 </ol>
 <p>
   
-  
-### To Do:
-
-2. Expand the mapping code to spectral line cubes
-
-### How to build your telescope
+<h3>How to build your telescope</h3>
   
 The horn radio telescopes are student, teacher and hobbiest built radio telescopes that can easily observe our place in the Milky Way Galaxy.   The horns are funnels a few feet in diameter, which channel radio wavelength signals to amplifiers and software defined radios. 
 <p>
 The horn construction is described at www.WVURAIL.org
 <p>
+### Python code in this project:
+  <ol>
+    <li> ras.py -- Radio Astronomy Plotting Tools
+    <li> radioastronomy.py -- Utilities for reading and writing horn radio astronomy data.
+    <li> angles.py -- tools for reading and writing angles in different formats
+    <li> gainfactor.py -- tools for computing the hot/cold load calibration.
+    <li> rasnames.py -- tools for selecting radio astronomy data and finding the files in sub-directories.
+    <li> jdutil.py -- convert dates to Jilian days and visa versa.
+    <li> angular.py -- compute the angular distance between to coordinates
+  </ol>
