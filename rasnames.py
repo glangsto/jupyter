@@ -79,9 +79,12 @@ def splitNames( names, typea=".ast", typeb=".hot", doDebug=False):
             if typea in aname:
                 tempnames.append(aname)
                 count = count + 1
-            elif typeb in aname:
-                tempnames.append(aname)
-                count = count + 1
+            # if looking for the second type
+            elif findb:
+                # then is the second type in the name
+                if typeb in aname:
+                    tempnames.append(aname)
+                    count = count + 1
     # need files in time order which happens to be alphabetical order, too
     typenames = sorted(tempnames)
     if doDebug:

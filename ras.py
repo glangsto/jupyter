@@ -1,5 +1,6 @@
 #savePython class to plot raw NSF spectra.
 #HISTORY
+#22Feb07 GIL update for notebook changes
 #21Sep23 GIL finish implementing selecting a narrow range of the galactic plan
 #21Sep16 GIL implement averaging in raw() start on tsys()
 #21Sep15 GIL updates for python 3 and add arguements for tsys plotting
@@ -102,8 +103,8 @@ class Plot(object):
 
         # set default names for files for hot and cold loads
         # null means compute 
-        self.hotFileName = ""
-        self.coldFileName = ""
+        self.hotfilename = ""
+        self.coldfilename = ""
 
         # currently used velocities for plotting range
         self.maxvel = 220.
@@ -167,9 +168,10 @@ class Plot(object):
         return
 
     def help(self, argstring=""):
-        ###
-        # provide user help info also parses and updates configuration
-        ###
+        """
+        Provide user help info. Also parses and updates configuration
+        No values are returned now
+        """
         args = argstring.split()
         nargs = len(args)
 
@@ -177,7 +179,7 @@ class Plot(object):
             print("ras.help(flags): Plotting Inputs for telescope obs.")
             print("Usage: .help('<flags> <files>')")
             print("Where <flags> are:")
-            print("-A optionally scale intensities by count of spectra averaged")
+            print("-A <hotfile> <coldfile>")
             print("-B <sample> Set first sample to plot (default is 1/4 of samples)")
             print("-BASE  Fit and remove a spectral baseline")
             print("-C optionally flag the center of the band")
@@ -219,7 +221,11 @@ class Plot(object):
                 print('Folding specectra')
                 self.doFold = True
             elif args[iarg].upper() == '-A':
-                self.toScalAve = True
+                iarg = iarg + 1
+                self.hotfilename = args[iarg]
+                iarg = iarg + 1
+                self.coldfilename = args[iarg]
+                print("Calibrating with %s and %s" % (self.hotfilename, self.coldfilename))
             elif args[iarg].upper() == '-AVE':
                 iarg = iarg + 1
                 self.aveTimeSec = int( args[iarg])
@@ -232,7 +238,8 @@ class Plot(object):
                 self.doBaseline = True
                 print("Fitting and subtracking a baseline")
             elif args[iarg].upper() == '-C':
-                self.flagCenter = True           
+                self.flagCenter = True         
+                print("Interpolate center of spectra")
             elif args[iarg].upper() == '-F':
                 iarg = iarg+1
                 self.fitOrder = int( sys.argv[iarg])
@@ -271,7 +278,7 @@ class Plot(object):
             elif args[iarg].upper() == "-I":
                 iarg=iarg+1
                 self.tint = np.float(args[iarg])
-                print('Spectral integration time for averaging: %f' % (self.tint))
+                print('Spectral integration time for averaging: %8.1f s' % (self.tint))
             elif args[iarg].upper() == '-K':
                 self.doKeep = True
                 iarg = iarg+1
@@ -281,6 +288,7 @@ class Plot(object):
                 if keepDir[nkeep-1] != '/':
                     keepDir = keepDir + "/"
                 self.keepDir = keepDir
+                print('Keeping averages in directory: %s' % (self.keepDir))
             elif args[iarg].upper() == '-L':
                 iarg = iarg+1
                 self.minvel = np.float( args[iarg])
@@ -314,6 +322,7 @@ class Plot(object):
                 print('Plot Title : ', self.myTitle)
             elif args[iarg].upper() == '-V':   # default is plotting Frequency
                 self.plotFrequency = False              # plot velocity
+                print("Plotting intensity versus Velocity")
             elif args[iarg].upper() == '-VA':   # now look for flags with arguments
                 iarg = iarg+1
                 self.minvel = float(args[iarg])
@@ -357,21 +366,16 @@ class Plot(object):
         if self.doGalLat:        
             print("Averaging obs. for Galactic Latitude range +/- %8.1f" \
                       % (self.galRange))
-        if iarg >= nargs:
-            return ["",""]
-        names = args[iarg:]
-        if self.verbose:
-            print("Observation Files and Directories:")
-            print(names)
-        return names
+        # no values are returned by help
+        return
     # end of help/parsing arguments
 
     def Help(self, argstring=""):
         ###
         # Alias for help()
         ###
-        names = self.help(argstring)
-        return names
+        self.help(argstring)
+        return
 
     def check_obs( self, ave_spec, nave, in_spec, doDebug=False):
         """
@@ -557,13 +561,16 @@ class Plot(object):
         ncold = 0
 
         # if reading a hot file
-        if (self.hotFileName != ""):
-            self.ave_hot.read_spec_ast(self.hotFileName)
+        if (self.hotfilename != ""):
+            self.ave_hot.read_spec_ast(self.hotfilename)
             self.ave_hot.ydataA = self.ave_hot.ydataA/self.ave_hot.nave
             self.nhot = 1
             # prepare transfer for gain calculation
             self.hv = self.ave_hot.ydataA
+            nData = len(self.hv)
+            print("Hot File %s, Read %d channels" % (self.hotfilename, nData))
             return self.nhot
+        
         # only process the hot files
         hotnames, nhot = rasnames.splitNames( names, ".hot", "")
         if nhot < 1:
@@ -625,7 +632,7 @@ class Plot(object):
         self.hv = hv
         
         # if keeping hot and cold files
-        if self.doKeep and self.hotFileName == "":
+        if self.doKeep and self.hotfilename == "":
             outname = radioastronomy.utcToName( self.ave_hot.utc)
             outname = outname + ".hot"  # output in counts
             # add telescope index
@@ -637,6 +644,11 @@ class Plot(object):
             # with sufficient numerical resolution.
             # the nave factor is removed on read
             self.ave_hot.ydataA = self.ave_hot.ydataA*self.ave_hot.nave
+            
+            import os
+            # if the keep directory is not yet present
+            if (os.path.isdir(self.keepDir) == False):
+                os.mkdir(self.keepDir) # create directory
             
             self.ave_hot.write_ascii_file(self.keepDir, outname)
             print( "Wrote Average Hot  Load File: %s%s" % (self.keepDir, outname))
@@ -712,13 +724,16 @@ class Plot(object):
         nName = len(names)
         
                 # if reading a hot file
-        if (self.coldFileName != ""):
-            self.ave_cold.read_spec_ast(self.coldFileName)
+        if (self.coldfilename != ""):
+            self.ave_cold.read_spec_ast(self.coldfilename)
             self.ave_cold.ydataA = self.ave_cold.ydataA/self.ave_cold.nave
             self.ncold = 1
             self.minel = self.ave_cold.telel
+            self.maxel = self.ave_cold.telel
             # prepare transfer for gain calculation
             self.cv = self.ave_cold.ydataA
+            nData = len(self.cv)
+            print("Cold File %s, Read %d channels" % (self.coldfilename, nData))
             return self.ncold
 
         nread = 0
@@ -796,7 +811,7 @@ class Plot(object):
                    % (self.minel, self.maxel))
             
         # if keeping hot and cold files and did not read this file already
-        if self.doKeep and self.coldFileName == "":
+        if self.doKeep and self.coldfilename == "":
             outname = radioastronomy.utcToName( self.ave_cold.utc)
             outname = outname + ".ast"  # output in counts            
             # add telescope index
@@ -820,7 +835,11 @@ class Plot(object):
         The hot and cold files must already be computed and intensities in self.hv and self.cv
         """
 
-        nData = len( self.ave_hot.ydataA)
+        nDataHot = len( self.ave_hot.ydataA)
+        nDataCold = len( self.ave_cold.ydataA)
+        if nDataHot != nDataCold:
+            print("Hot and Cold spectra have different sizes: %d, %d" % (nDataHot, nDataCold))
+        nData = min( nDataHot, nDataCold)
         n9 = int(nData/9)
         n39 = int(3*n9)
         n49 = int(4*n9)
@@ -830,7 +849,7 @@ class Plot(object):
         self.vel = np.zeros(nData)
         xv = self.ave_cold.xdata * 1.E-6 # convert to MHz
         # create index array
-        for jjj in range (0, nData):
+        for jjj in range (nData):
             self.vel[jjj] = self.c * (self.nuRefFreq - xv[jjj])/self.nuRefFreq
 
         self.xa, self.xb = gf.velocity_to_indicies( self.vel, \
@@ -1235,6 +1254,9 @@ class Plot(object):
         lastFile = False
         nfiles = len(astnames)
         lastFileName = astnames[nfiles-1]
+        
+        if doDebug:
+            print( astnames)
         
         # plot no more than N spectra
         for filename in astnames:
