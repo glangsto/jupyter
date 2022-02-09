@@ -1,5 +1,6 @@
 #savePython class to plot raw NSF spectra.
 #HISTORY
+#22Feb09 GIL update Summary file processing
 #22Feb07 GIL update for notebook changes
 #21Sep23 GIL finish implementing selecting a narrow range of the galactic plan
 #21Sep16 GIL implement averaging in raw() start on tsys()
@@ -316,6 +317,10 @@ class Plot(object):
             elif args[iarg].upper() == '-R':
                 self.flagRfi = True
                 print("Flagging RFI")
+            elif args[iarg].upper() == '-S':   # if plot title provided
+                iarg = iarg+1
+                tempSummaryFile = str(args[iarg])
+                self.writeTsys = True
             elif args[iarg].upper() == '-T':   # if plot title provided
                 iarg = iarg+1
                 self.myTitle = str(args[iarg])
@@ -358,6 +363,10 @@ class Plot(object):
                 break
             iarg = iarg + 1
         # returns the file names/directories
+
+        if self.writeTsys and tempSummaryFile != "":
+            self.summaryFile = "T%d-%s" % (self.telIndex, tempSummaryFile)
+            print("Writing to Summary file: %s" % (self.summaryFile))
 
         if self.doGalLatLon:
             print("Averaging obs. at Galactic Lon,Lat: %0.2f,%0.2f +/- %0.2f" % \
@@ -903,7 +912,7 @@ class Plot(object):
         # end of computeGain
         return
  
-    def writeTsys( self, in_spec):
+    def writeTsysFile( self, in_spec):
         """
         write the fully calibrated Spectrum
         """
@@ -1077,11 +1086,12 @@ class Plot(object):
             self.xv = xv[self.xa:self.xb]
             self.yv = yv[self.xa:self.xb]
             
+
             # if writing calibrated spectra
             if self.doSave:
-                self.ave_spec.ydataA = yv * self.ave_spec.ydatA
+                self.ave_spec.ydataA = yv
                 outname = radioastronomy.utcToName( self.ave_spec.utc)
-                outname = outname + ".ast"  # output in counts
+                outname = outname + ".kel"  # output in counts
                 # add telescope index
                 outname = ("T%d-" % self.telIndex)+outname
                 n = self.ave_spec.nChan
@@ -1089,7 +1099,8 @@ class Plot(object):
                   (n, np.median( self.ave_spec.ydataA[int(n/3):int(2*n/3)]), outname))
                 self.ave_spec.write_ascii_file(self.outDir, outname)
                 # end if writing averages
-                
+
+            
         # end for all names
         # clean up averaging parameters
         nave = 0
@@ -1194,7 +1205,7 @@ class Plot(object):
             print("Velocity:  %10.3f +/- %7.3f" % (tVSum, tVSumRms))
             
         # end of Tintegrate()
-        return tSumKmSec, dTSumKmSec, tVSum, tVSumRms
+        return tSumKmSec, dTSumKmSec, tVSum, tVSumRms, tSourcemax, velSource, dV, dTSumKmSec
                
     def tsys(self, names, doDebug=False):
         ###
@@ -1409,8 +1420,8 @@ class Plot(object):
                 # transfer for saving/calculating
                 ave_spec.ydataA = tSource
                 # compute/log integrals of this spectrum
-                tSumKmSec, dTSumKMSec, tVsum, tVSumRm = \
-                    self.Tintegrate( ave_spec, iVmin, iVmax)
+                tSumKmSec, dTSumKMSec, tVSum, tVSumRms, tSourcemax, velSource, dV, \
+                    dTSumKmSec = self.Tintegrate( ave_spec, iVmin, iVmax)
                 
                 xv = self.vel[self.xa:self.xb]
                 yv = tsky[self.xa:self.xb]
@@ -1451,19 +1462,22 @@ class Plot(object):
                 for tick in ax1.yaxis.get_major_ticks():
                     tick.label.set_fontsize(14) 
 
-
+            # now write intensity summary if requested
+            if self.writeTsys and not self.plotFrequency:
+                gf.saveTsysValues( self.summaryFile, ave_spec, self.telIndex, \
+                                      tSourcemax, velSource, dV, tVSum, tVSumRms, 
+                                      tSumKmSec, dTSumKmSec)
+            
             note = ave_spec.site
-            if self.nplot > self.maxPlot:
-                continue
-
             yallmin = min(ymin,yallmin)
             yallmax = max(ymax,yallmax)
-
-            # finally plot the spectrum
-            plt.plot(xv, yv, \
+            
+            if self.nplot < self.maxPlot:
+                # finally plot the spectrum
+                plt.plot(xv, yv, \
                          colors[(self.nplot % ncolors) ], \
                          linestyle=linestyles[(self.nplot % nstyles)], label=coordlabel, lw=2)
-            self.nplot = self.nplot + 1
+                self.nplot = self.nplot + 1
 
             # transfer to structure for later use. 
             self.xv = xv
@@ -1477,7 +1491,7 @@ class Plot(object):
 #                print("Warning Output number of channels: %d != %d" % (n, ave_spec.nChan))
                 ave_spec.bandwidthHz = ave_spec.bandwidthHz * float(n) / float(ave_spec.nChan)
                 ave_spec.nChan = n
-            self.ave_spec = ave_spec
+            self.ave_spec = ave_spec  
 
             # if writing calibrated spectra
             if self.doSave:
