@@ -1,6 +1,5 @@
 #Python function to compute gain factor for different processor indicies, dates and elevations
 #HISTORY
-#22Feb10 GIL write ra, dec instead of az and el
 #21AUG20 GIL enable passing of the debug flag
 #21JAN07 GIL add help, update for changes
 #20APR30 GIL add pointing offset model
@@ -58,15 +57,6 @@ measurements[iObs, 5,] = ( 40.0, 39.6, 38.1)
 gainFactors = np.zeros((nObs, nProcessors))
 normalized = False
 firstRun = True
-# for save integrated values, init variables recorded only when changed
-lastaz = -100.  
-lastel = -100.
-lastTSys = -100.
-lastTRx = -100.
-lastKperC = -100.
-lastDate = ""
-lastTel = -1
-lastDV = -100.
 
 def fit_baseline( xs, ys, imin, imax, nchan, fitOrder, doDebug=False):
     """
@@ -93,10 +83,36 @@ def fit_baseline( xs, ys, imin, imax, nchan, fitOrder, doDebug=False):
 
     return yout
 
+def fit_range( xs, ys, xa0, xa, xb, xbe, fitOrder, doDebug=False):
+    """
+    fit baseline does a polynomical fit over channels in a select range
+    The baseline is returned. 
+    Inputs: 
+    xs     x axis values
+    ys     y axis values
+    xa0, xa  one 
+    xb, xbe  2nd range of x,y channels to fit (maximum side)
+    nchan 
+    """
+    
+    xfit = np.concatenate( (xs[xa0: xa], xs[xb:xbe]))
+    yfit = np.concatenate( (ys[xa0: xa], ys[xb:xbe]))
+# calculate polynomial (0=constant, 1=linear, 2=2nd order, 3=3rd order
+    z = np.polyfit(xfit, yfit, fitOrder)
+    if doDebug:
+        print("2nd order Fit Coefficients: %s" % (z))
+    f = np.poly1d(z)   # f is a function that is used to compute y values
+
+# calculate y's from the xs
+    yout = f(xs)
+
+    return yout
+
 def compute_vbarycenter( spectrum, doDebug=False):
     """ 
     Compute the velocity correction to Barycentric for this date and direction
     """
+    global firstRun 
 
     if baryCenterAvailable: 
         longitude = spectrum.tellon
@@ -112,8 +128,9 @@ def compute_vbarycenter( spectrum, doDebug=False):
 # various intermediate results)
         corr, hjd = pyasl.helcorr(longitude, latitude, altitude, \
                                       ra2000, dec2000, jd, debug=False)
-        if doDebug:
+        if doDebug or firstRun:
             print("Barycentric correction [km/s]: %8.3f" % (corr))
+            firstRun = False
     else:
         corr = 0.
     return corr
@@ -187,15 +204,6 @@ def saveTsysValues( saveFile, cSpec, cpuIndex, tSourcemax, velSource, dV, tVSum,
     time = time.replace('_', ':')  # put time back in normal hh:mm:ss format
     parts = time.split('.')  # trim off seconds part of time
     time = parts[0]
-    global lastaz
-    global lastel
-    global lastTSys
-    global lastTRx
-    global lastKperC
-    global lastDate
-    global lastTel
-    global lastDV    
-    
     if saveFile == "":
         saveFile = "../" + date + ".sav"
 
@@ -204,46 +212,18 @@ def saveTsysValues( saveFile, cSpec, cpuIndex, tSourcemax, velSource, dV, tVSum,
 
     f = open(saveFile, "a+")
 
-    if date != lastDate:
-        f.write( "# Date = %s\r\n" % (date))         
-        lastDate = date    # if az or el changed
-    if cSpec.telaz != lastaz:
-        f.write( "# TELAZ = %9.2f\r\n" % (cSpec.telaz))
-        lastaz = cSpec.telaz
-    if cSpec.telel != lastel:
-        f.write( "# TELEL = %9.2f\r\n" % (cSpec.telel))
-        lastel = cSpec.telel
-    if cSpec.telel != lastel:
-        f.write( "# TELEL = %9.2f\r\n" % (cSpec.telel))
-        lastel = cSpec.telel
-    if cSpec.tSys != lastTSys:
-        f.write( "# TSYS  = %9.2f\r\n" % (cSpec.tSys))
-        lastTSys = cSpec.tSys
-    if cSpec.tRx != lastTRx:
-        f.write( "# TRX   = %9.2f\r\n" % (cSpec.tRx))
-        lastTRx = cSpec.tRx
-    if cSpec.KperC != lastKperC:
-        f.write( "# KPERC = %9.2f\r\n" % (cSpec.KperC))
-        lastKperC = cSpec.KperC
-    if cpuIndex != lastTel:
-        f.write( "# TEL   = %d\r\n" % (cpuIndex))         
-        lastTel = cpuIndex     
-    if dV != lastDV:
-        f.write( "# DVEL  = %7.3f\r\n" % (dV))         
-        lastDV = dV     
-
     # if a new file, then need to add the header
     if not oldFile:
-        f.write( "#  Time    RA      Dec    Time   Peak  Peak  Vel.  Ave Vel.   ")
-        f.write( "Sum Intensity   Scale \r\n") 
-        f.write( "#          (d)     (d)     (s)   (K)    (km/s)    (km/s) +/-  ")
+        f.write( "#  Date    Time   Tel  Az     El     Tsys    Trx    Trms     Time  K/Count    Peak    Peak  Vel.     Sum Vel.   ")
+        f.write( "Sum Intensity   Scale \r\n")
+        f.write( "#                  #   (d)    (d)     (K)     (K)    (K)     (s)              (K)     (km/s) +/-    (km/s) +/-  ")
         f.write( " (K km/s) +/-   Factor\r\n")
         
-    #          1 2   3   4     5        10     11     12     13    14      15    16     17
-    #         Date   ra   dec   tint  tPeak, vel    VSum   Vrms,  KInt  dKInt factor
-    f.write( "%s %7.2f %7.2f %6.1f %5.1f %7.3f %8.0f %4.0f %7.1f %7.1f %7.3f\r\n" % 
-             (time, cSpec.ra, cSpec.dec, cSpec.tint, 
-              tSourcemax, velSource, tVSum, tVsumRms, tSumKmSec, dTSumKmSec, cSpec.gainFactor))
+    #          1 2   3   4     5     6    7      8       9    10     11    11    12     13    14      15    16     17
+    #         Date   cpu  az    el  tSys  tRx   tRms   tint   K/C   tPeak, vel    dv   VSum   Vrms,  KInt  dKInt factor
+    f.write( "%s %s %2d %6.1f %6.1f %7.2f %7.2f %6.2f %7.0f %7.1f %7.3f %7.1f %5.1f %7.1f %5.1f %7.0f %7.0f %7.3f\r\n" % 
+             (date, time, cpuIndex, cSpec.telaz, cSpec.telel, cSpec.tSys, cSpec.tRx, cSpec.tRms, cSpec.tint, cSpec.KperC, 
+              tSourcemax, velSource, dV, tVSum, tVsumRms, tSumKmSec, dTSumKmSec, cSpec.gainFactor))
     f.close()
     # end of saveTsysValues()
 
