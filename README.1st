@@ -1,0 +1,9 @@
+# To see examples of plotting horn telecope data type:
+
+ipython MilkyWayPlotting.ipynb
+
+# This will plot a sequence of Milky Way spectra from a horn radio telescope.
+# first the raw data are plotted.
+# Kill the plot window, and a plot of calibrated data are shown.
+# Kill the new window and different processing is applied showing a plot
+# with baseline removed.
