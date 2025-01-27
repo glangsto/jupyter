@@ -273,12 +273,12 @@ class Plot(object):
                 self.galLon = float( args[iarg])
             elif args[iarg].upper() == '-H':
                 iarg = iarg+1
-                self.maxvel = np.float( args[iarg])
+                self.maxvel = float( args[iarg])
                 print('Maximum (high) velocity for sum: %7.2f km/sec'\
                       % (self.maxvel))
             elif args[iarg].upper() == "-I":
                 iarg=iarg+1
-                self.tint = np.float(args[iarg])
+                self.tint = float(args[iarg])
                 print('Spectral integration time for averaging: %8.1f s' % (self.tint))
             elif args[iarg].upper() == '-K':
                 self.doKeep = True
@@ -292,7 +292,7 @@ class Plot(object):
                 print('Keeping averages in directory: %s' % (self.keepDir))
             elif args[iarg].upper() == '-L':
                 iarg = iarg+1
-                self.minvel = np.float( args[iarg])
+                self.minvel = float( args[iarg])
                 print('Minium (low)  velocity for sum: %7.2f km/sec' \
                       % (self.minvel))
             elif args[iarg].upper() == '-N':   # if number of spectra to plot
