@@ -1060,10 +1060,12 @@ class Plot(object):
             if self.nplot <= 0 and self.maxPlot > 0:
                 self.fig, ax1 = plt.subplots(figsize=(12,10))
                 # fig.canvas.set_window_title(date)
-                for tick in ax1.xaxis.get_major_ticks():
-                    tick.label.set_fontsize(14) 
-                for tick in ax1.yaxis.get_major_ticks():
-                    tick.label.set_fontsize(14) 
+                ax1.tick_params(axis='x', labelsize=14)
+                ax1.tick_params(axis='y', labelsize=14)
+#                for tick in ax1.xaxis.get_major_ticks():
+#                    tick.label.set_fontsize(14) 
+#                for tick in ax1.yaxis.get_major_ticks():
+#                    tick.label.set_fontsize(14) 
 
             # if maximum number of plots completed, exit to show the results
             if self.nplot > self.maxPlot:
@@ -1456,11 +1458,13 @@ class Plot(object):
                     ymax, ymed, xmax, ave_spec.count))
             if self.nplot <= 0 and self.maxPlot > 0:
                 self.fig, ax1 = plt.subplots(figsize=(12,10))
+                ax1.tick_params(axis='x', labelsize=14)
+                ax1.tick_params(axis='y', labelsize=14)
                 # fig.canvas.set_window_title(date)
-                for tick in ax1.xaxis.get_major_ticks():
-                    tick.label.set_fontsize(14) 
-                for tick in ax1.yaxis.get_major_ticks():
-                    tick.label.set_fontsize(14) 
+#                for tick in ax1.xaxis.get_major_ticks():
+#                    tick.label.set_fontsize(14) 
+#                for tick in ax1.yaxis.get_major_ticks():
+#                    tick.label.set_fontsize(14) 
 
             # now write intensity summary if requested
             if self.writeTsys and not self.plotFrequency:
